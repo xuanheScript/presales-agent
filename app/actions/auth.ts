@@ -3,6 +3,19 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 
+function getBaseUrl() {
+  // 优先使用环境变量配置的 URL
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return process.env.NEXT_PUBLIC_SITE_URL
+  }
+  // Vercel 部署时自动提供的 URL
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`
+  }
+  // 本地开发
+  return 'http://localhost:3000'
+}
+
 export interface AuthResult {
   error?: string
   success?: boolean
@@ -45,6 +58,8 @@ export async function signUp(formData: FormData): Promise<AuthResult> {
     return { error: '密码长度至少为6位' }
   }
 
+  const baseUrl = getBaseUrl()
+
   const { error } = await supabase.auth.signUp({
     email,
     password,
@@ -52,6 +67,7 @@ export async function signUp(formData: FormData): Promise<AuthResult> {
       data: {
         full_name: fullName,
       },
+      emailRedirectTo: `${baseUrl}/auth/callback`,
     },
   })
 
