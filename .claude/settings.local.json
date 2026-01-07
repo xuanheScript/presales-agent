@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm dlx shadcn@latest add:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm add:*)",
+      "Bash(cat:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(pnpm config set:*)",
+      "Bash(pnpm install:*)",
+      "Bash(npx supabase:*)",
+      "Bash(brew list:*)",
+      "Bash(brew install:*)",
+      "Bash(supabase init:*)",
+      "Bash(supabase migration new:*)",
+      "Bash(supabase login:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(pnpm remove:*)",
+      "Bash(npx ai-elements@latest add:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nInitial commit: Presales Agent 售前助手系统\n\n- 基于 Next.js 15 + React 19 构建\n- 集成 Supabase 认证和数据存储\n- 使用 CopilotKit 实现 AI 对话功能\n- 支持项目管理、AI 文件助手、AI 对话等功能\n- 集成 shadcn/ui 组件库\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
