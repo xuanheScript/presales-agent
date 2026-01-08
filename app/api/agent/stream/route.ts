@@ -3,7 +3,7 @@ import { streamPresalesWorkflow } from '@/lib/agents/graph'
 import { getRequirement, updateRequirementAnalysis } from '@/app/actions/requirements'
 import type { ParsedRequirement } from '@/types'
 
-export const maxDuration = 120 // 允许最长 120 秒执行
+export const maxDuration = 300 // 允许最长 300 秒执行
 
 interface RunRequest {
   projectId: string
