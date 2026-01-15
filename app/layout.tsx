@@ -12,8 +12,21 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  // 运行时环境变量配置，注入到客户端
+  const runtimeConfig = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+  }
+
   return (
     <html lang="zh-CN">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__RUNTIME_CONFIG__ = ${JSON.stringify(runtimeConfig)}`,
+          }}
+        />
+      </head>
       <body className="antialiased">
         {children}
         <Toaster />

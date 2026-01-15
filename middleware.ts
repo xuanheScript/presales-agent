@@ -2,13 +2,24 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // 公开路由 - 不需要验证
+  const publicPaths = ['/login', '/register']
+  const isPublicPath = publicPaths.includes(pathname)
+
+  // API 路由跳过 middleware（由各自的 handler 处理认证）
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next()
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   })
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_ANON_KEY!,
     {
       cookies: {
         getAll() {
@@ -29,15 +40,13 @@ export async function middleware(request: NextRequest) {
     }
   )
 
+  // 使用 getSession() 替代 getUser()
+  // getSession() 主要从本地 cookie 读取，减少网络请求
   const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    data: { session },
+  } = await supabase.auth.getSession()
 
-  const { pathname } = request.nextUrl
-
-  // 公开路由
-  const publicPaths = ['/login', '/register']
-  const isPublicPath = publicPaths.includes(pathname)
+  const user = session?.user
 
   // 如果用户未登录且访问受保护路由，重定向到登录页
   if (!user && !isPublicPath && pathname !== '/') {

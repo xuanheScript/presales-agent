@@ -8,13 +8,14 @@
     ]
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 4000",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.7",
+    "@ai-sdk/deepseek": "^2.0.6",
     "@ai-sdk/langchain": "^2.0.14",
     "@ai-sdk/react": "^3.0.14",
     "@hookform/resolvers": "^5.2.2",

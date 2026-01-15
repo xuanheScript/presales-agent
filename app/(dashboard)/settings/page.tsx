@@ -50,17 +50,17 @@ export default function SettingsPage() {
               </p>
               <div className="space-y-2 font-mono text-xs">
                 <p>
-                  <span className="text-muted-foreground">AI_GATEWAY_API_KEY=</span>
+                  <span className="text-muted-foreground">DEEPSEEK_API_KEY=</span>
                   <span className="text-green-600">your_api_key</span>
                 </p>
                 <p>
-                  <span className="text-muted-foreground">AI_GATEWAY_MODEL=</span>
-                  <span className="text-blue-600">anthropic/claude-sonnet-4-20250514</span>
+                  <span className="text-muted-foreground">DEEPSEEK_MODEL=</span>
+                  <span className="text-blue-600">deepseek-chat</span>
                 </p>
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              支持的模型：Claude Sonnet 4、Claude Opus 4 等
+              支持的模型：deepseek-chat、deepseek-reasoner 等
             </p>
           </CardContent>
         </Card>

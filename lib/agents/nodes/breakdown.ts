@@ -26,16 +26,35 @@ const functionModulesSchema = z.object({
  */
 const BREAKDOWN_PROMPT = `你是一位资深的软件架构师，擅长将项目需求拆解为可执行的功能模块。
 
-根据以下需求分析结果，将项目拆解为详细的功能模块清单。
+根据以下需求分析结果和原始需求文档，将项目拆解为详细的功能模块清单。
 
 **注意事项**：
 1. 每个功能应该是一个独立可开发的单元
-2. 根据项目实际情况合理估算工时
+2. 根据功能的实际复杂度、业务逻辑深度、技术实现难度来评估工时，不要套用固定公式
 3. 难度等级说明：
-   - simple: 简单功能，标准实现，约 4-8 小时
-   - medium: 中等复杂度，需要一些定制，约 8-24 小时
-   - complex: 复杂功能，需要深度定制，约 24-60 小时
-   - very_complex: 非常复杂，需要创新解决方案，60+ 小时
+   - simple: 简单功能，标准 CRUD 操作或现有组件复用
+   - medium: 中等复杂度，需要一定的业务逻辑处理或定制开发
+   - complex: 复杂功能，涉及多系统交互、复杂算法或深度定制
+   - very_complex: 非常复杂，需要创新解决方案、技术攻关或全新架构设计
+4. 工时评估应基于功能的具体实现细节，考虑：
+   - 业务逻辑复杂度
+   - 数据模型设计
+   - 接口数量和复杂度
+   - 前端交互复杂度
+   - 第三方集成需求
+   - 异常处理和边界情况
+
+---
+
+**项目描述**：
+
+{projectDescription}
+
+---
+
+**原始需求文档**：
+
+{rawRequirement}
 
 ---
 
@@ -75,6 +94,8 @@ export async function breakdownNode(
     // 构建提示词
     const { analysis } = state
     const prompt = BREAKDOWN_PROMPT
+      .replace('{projectDescription}', state.projectDescription || '未提供项目描述')
+      .replace('{rawRequirement}', state.rawRequirement)
       .replace('{projectType}', analysis.projectType)
       .replace('{businessGoals}', analysis.businessGoals.map((g) => `- ${g}`).join('\n'))
       .replace('{keyFeatures}', analysis.keyFeatures.map((f) => `- ${f}`).join('\n'))

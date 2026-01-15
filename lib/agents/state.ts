@@ -100,6 +100,12 @@ export const PresalesStateAnnotation = Annotation.Root({
     reducer: (_, next) => next,
   }),
 
+  /** 项目描述 */
+  projectDescription: Annotation<string>({
+    default: () => '',
+    reducer: (_, next) => next,
+  }),
+
   // ========== 各阶段输出 ==========
   /** 需求分析结果 */
   analysis: Annotation<AgentAnalysisResult | null>({
@@ -154,12 +160,14 @@ export type PresalesState = typeof PresalesStateAnnotation.State
 export function createInitialState(
   projectId: string,
   requirementId: string,
-  rawRequirement: string
+  rawRequirement: string,
+  projectDescription: string = ''
 ): Partial<PresalesState> {
   return {
     projectId,
     requirementId,
     rawRequirement,
+    projectDescription,
     messages: [],
     analysis: null,
     functions: [],

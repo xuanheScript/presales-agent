@@ -90,12 +90,14 @@ export const presalesGraph = workflow.compile()
  * @param projectId - 项目 ID
  * @param requirementId - 需求 ID
  * @param rawRequirement - 原始需求文本
+ * @param projectDescription - 项目描述
  * @returns 工作流执行结果
  */
 export async function runPresalesWorkflow(
   projectId: string,
   requirementId: string,
-  rawRequirement: string
+  rawRequirement: string,
+  projectDescription: string = ''
 ): Promise<WorkflowResult> {
   console.log('[Graph] 开始执行售前成本估算工作流:', {
     projectId,
@@ -107,7 +109,7 @@ export async function runPresalesWorkflow(
 
   try {
     // 创建初始状态
-    const initialState = createInitialState(projectId, requirementId, rawRequirement)
+    const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription)
 
     // 执行工作流
     const finalState = await presalesGraph.invoke(initialState)
@@ -148,16 +150,18 @@ export async function runPresalesWorkflow(
  * @param projectId - 项目 ID
  * @param requirementId - 需求 ID
  * @param rawRequirement - 原始需求文本
+ * @param projectDescription - 项目描述
  * @returns AsyncIterable 流式状态更新
  */
 export async function* streamPresalesWorkflow(
   projectId: string,
   requirementId: string,
-  rawRequirement: string
+  rawRequirement: string,
+  projectDescription: string = ''
 ): AsyncIterable<{ step: string; state: Partial<PresalesState> }> {
   console.log('[Graph] 开始流式执行工作流')
 
-  const initialState = createInitialState(projectId, requirementId, rawRequirement)
+  const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription)
 
   // 使用 stream 方法获取状态更新流
   const stream = await presalesGraph.stream(initialState, {

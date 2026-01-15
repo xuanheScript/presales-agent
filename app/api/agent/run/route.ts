@@ -45,8 +45,15 @@ export async function POST(req: Request) {
       )
     }
 
-    // 更新项目状态为分析中
+    // 获取项目信息（包含项目描述）
     const supabase = await createClient()
+    const { data: project } = await supabase
+      .from('projects')
+      .select('description')
+      .eq('id', projectId)
+      .single()
+
+    // 更新项目状态为分析中
     await supabase
       .from('projects')
       .update({ status: 'analyzing' })
@@ -56,7 +63,8 @@ export async function POST(req: Request) {
     const result = await runPresalesWorkflow(
       projectId,
       requirementId,
-      requirement.raw_content
+      requirement.raw_content,
+      project?.description || ''
     )
 
     // 如果工作流执行失败
