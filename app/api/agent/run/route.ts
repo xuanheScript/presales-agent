@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { runPresalesWorkflow } from '@/lib/agents/graph'
 import { getRequirement, updateRequirementAnalysis } from '@/app/actions/requirements'
+import { getSystemConfig } from '@/app/actions/settings'
+import { DEFAULT_CONFIG } from '@/constants'
 import type { ParsedRequirement } from '@/types'
+import type { WorkflowSystemConfig } from '@/lib/agents/state'
 
 export const maxDuration = 300 // 允许最长 300 秒执行
 
@@ -53,6 +56,14 @@ export async function POST(req: Request) {
       .eq('id', projectId)
       .single()
 
+    // 获取系统配置
+    const dbConfig = await getSystemConfig()
+    const systemConfig: WorkflowSystemConfig = {
+      laborCostPerDay: dbConfig?.default_labor_cost_per_day || DEFAULT_CONFIG.LABOR_COST_PER_DAY,
+      riskBufferPercentage: dbConfig?.default_risk_buffer_percentage || DEFAULT_CONFIG.RISK_BUFFER_PERCENTAGE,
+      workingHoursPerDay: DEFAULT_CONFIG.WORKING_HOURS_PER_DAY,
+    }
+
     // 更新项目状态为分析中
     await supabase
       .from('projects')
@@ -64,7 +75,8 @@ export async function POST(req: Request) {
       projectId,
       requirementId,
       requirement.raw_content,
-      project?.description || ''
+      project?.description || '',
+      systemConfig
     )
 
     // 如果工作流执行失败

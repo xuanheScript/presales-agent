@@ -39,8 +39,15 @@ import {
   deleteFunctionModule,
   addFunctionModule,
 } from '@/app/actions/functions'
-import { DIFFICULTY_MULTIPLIERS } from '@/constants'
+import { DIFFICULTY_MULTIPLIERS, DEFAULT_CONFIG } from '@/constants'
 import type { FunctionModule, DifficultyLevel } from '@/types'
+
+/**
+ * 工时转人天（保留1位小数）
+ */
+function hoursToWorkDays(hours: number): number {
+  return Math.round((hours / DEFAULT_CONFIG.WORKING_HOURS_PER_DAY) * 10) / 10
+}
 
 interface FunctionTableProps {
   projectId: string
@@ -342,11 +349,13 @@ export function FunctionTable({ projectId, functions }: FunctionTableProps) {
       <div className="flex justify-end gap-6 text-sm">
         <div>
           <span className="text-muted-foreground">基础工时合计：</span>
-          <span className="font-medium">{totalBaseHours} 小时</span>
+          <span className="font-medium">{totalBaseHours}h</span>
+          <span className="text-muted-foreground ml-1">({hoursToWorkDays(totalBaseHours)} 人天)</span>
         </div>
         <div>
           <span className="text-muted-foreground">加权工时合计：</span>
-          <span className="font-medium">{Math.round(totalWeightedHours)} 小时</span>
+          <span className="font-medium">{Math.round(totalWeightedHours)}h</span>
+          <span className="text-muted-foreground ml-1">({hoursToWorkDays(totalWeightedHours)} 人天)</span>
         </div>
       </div>
     </div>

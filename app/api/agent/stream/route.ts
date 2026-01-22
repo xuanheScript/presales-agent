@@ -1,7 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { streamPresalesWorkflow } from '@/lib/agents/graph'
 import { getRequirement, updateRequirementAnalysis } from '@/app/actions/requirements'
+import { getSystemConfig } from '@/app/actions/settings'
+import { DEFAULT_CONFIG } from '@/constants'
 import type { ParsedRequirement } from '@/types'
+import type { WorkflowSystemConfig } from '@/lib/agents/state'
 
 export const maxDuration = 300 // 允许最长 300 秒执行
 
@@ -52,6 +55,14 @@ export async function POST(req: Request) {
       .update({ status: 'analyzing' })
       .eq('id', projectId)
 
+    // 获取系统配置
+    const dbConfig = await getSystemConfig()
+    const systemConfig: WorkflowSystemConfig = {
+      laborCostPerDay: dbConfig?.default_labor_cost_per_day || DEFAULT_CONFIG.LABOR_COST_PER_DAY,
+      riskBufferPercentage: dbConfig?.default_risk_buffer_percentage || DEFAULT_CONFIG.RISK_BUFFER_PERCENTAGE,
+      workingHoursPerDay: DEFAULT_CONFIG.WORKING_HOURS_PER_DAY,
+    }
+
     // 创建 SSE 流
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
@@ -74,7 +85,9 @@ export async function POST(req: Request) {
           for await (const update of streamPresalesWorkflow(
             projectId,
             requirementId,
-            requirement.raw_content
+            requirement.raw_content,
+            '', // projectDescription
+            systemConfig
           )) {
             console.log('[Stream] 步骤更新:', update.step)
 

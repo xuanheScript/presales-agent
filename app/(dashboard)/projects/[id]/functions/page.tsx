@@ -3,7 +3,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { FunctionTable } from '@/components/project/function-table'
 import { getFunctionModules, getFunctionSummary } from '@/app/actions/functions'
-import { DIFFICULTY_MULTIPLIERS } from '@/constants'
+import { DIFFICULTY_MULTIPLIERS, DEFAULT_CONFIG } from '@/constants'
+
+/**
+ * 工时转人天（保留1位小数）
+ */
+function hoursToWorkDays(hours: number): number {
+  return Math.round((hours / DEFAULT_CONFIG.WORKING_HOURS_PER_DAY) * 10) / 10
+}
 
 interface FunctionsPageProps {
   params: Promise<{ id: string }>
@@ -54,12 +61,14 @@ async function FunctionsContent({ projectId }: { projectId: string }) {
           <CardHeader className="pb-2">
             <CardDescription>基础工时</CardDescription>
             <CardTitle className="text-3xl">{summary.totalHours}h</CardTitle>
+            <p className="text-sm text-muted-foreground">{hoursToWorkDays(summary.totalHours)} 人天</p>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>加权工时</CardDescription>
             <CardTitle className="text-3xl">{Math.round(totalWeightedHours)}h</CardTitle>
+            <p className="text-sm text-muted-foreground">{hoursToWorkDays(totalWeightedHours)} 人天</p>
           </CardHeader>
         </Card>
         <Card>

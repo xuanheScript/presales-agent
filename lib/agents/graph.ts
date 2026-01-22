@@ -5,6 +5,7 @@ import {
   extractWorkflowResult,
   type PresalesState,
   type WorkflowResult,
+  type WorkflowSystemConfig,
 } from './state'
 import { analyzeNode } from './nodes/analyze'
 import { breakdownNode } from './nodes/breakdown'
@@ -91,25 +92,28 @@ export const presalesGraph = workflow.compile()
  * @param requirementId - 需求 ID
  * @param rawRequirement - 原始需求文本
  * @param projectDescription - 项目描述
+ * @param systemConfig - 系统配置（人天成本、风险缓冲比例等）
  * @returns 工作流执行结果
  */
 export async function runPresalesWorkflow(
   projectId: string,
   requirementId: string,
   rawRequirement: string,
-  projectDescription: string = ''
+  projectDescription: string = '',
+  systemConfig: WorkflowSystemConfig | null = null
 ): Promise<WorkflowResult> {
   console.log('[Graph] 开始执行售前成本估算工作流:', {
     projectId,
     requirementId,
     requirementLength: rawRequirement.length,
+    systemConfig,
   })
 
   const startTime = Date.now()
 
   try {
     // 创建初始状态
-    const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription)
+    const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription, systemConfig)
 
     // 执行工作流
     const finalState = await presalesGraph.invoke(initialState)
@@ -151,17 +155,19 @@ export async function runPresalesWorkflow(
  * @param requirementId - 需求 ID
  * @param rawRequirement - 原始需求文本
  * @param projectDescription - 项目描述
+ * @param systemConfig - 系统配置（人天成本、风险缓冲比例等）
  * @returns AsyncIterable 流式状态更新
  */
 export async function* streamPresalesWorkflow(
   projectId: string,
   requirementId: string,
   rawRequirement: string,
-  projectDescription: string = ''
+  projectDescription: string = '',
+  systemConfig: WorkflowSystemConfig | null = null
 ): AsyncIterable<{ step: string; state: Partial<PresalesState> }> {
   console.log('[Graph] 开始流式执行工作流')
 
-  const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription)
+  const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription, systemConfig)
 
   // 使用 stream 方法获取状态更新流
   const stream = await presalesGraph.stream(initialState, {

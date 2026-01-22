@@ -11,6 +11,13 @@ import type { ParsedRequirement, FunctionModule, EffortEstimation, CostEstimate 
 // 工作流阶段类型
 export type WorkflowStep = 'analyze' | 'breakdown' | 'estimate' | 'calculate' | 'complete'
 
+// 系统配置（用于成本计算）
+export interface WorkflowSystemConfig {
+  laborCostPerDay: number
+  riskBufferPercentage: number
+  workingHoursPerDay: number
+}
+
 // Agent 分析结果（与 ParsedRequirement 对齐但独立定义以便扩展）
 export interface AgentAnalysisResult {
   projectType: string
@@ -36,12 +43,12 @@ export interface AgentFunctionModule {
 }
 
 // 工时评估输出
+// 注意：总工时由代码根据功能模块计算，AI 只返回各阶段的比例分配
 export interface AgentEffortEstimation {
-  totalHours: number
-  breakdown: {
-    development: number
-    testing: number
-    integration: number
+  breakdownRatio: {
+    development: number  // 开发工时占比（0-1）
+    testing: number      // 测试工时占比（0-1）
+    integration: number  // 集成联调工时占比（0-1）
   }
   teamComposition: {
     role: string
@@ -106,6 +113,12 @@ export const PresalesStateAnnotation = Annotation.Root({
     reducer: (_, next) => next,
   }),
 
+  /** 系统配置（用于成本计算） */
+  systemConfig: Annotation<WorkflowSystemConfig | null>({
+    default: () => null,
+    reducer: (_, next) => next,
+  }),
+
   // ========== 各阶段输出 ==========
   /** 需求分析结果 */
   analysis: Annotation<AgentAnalysisResult | null>({
@@ -161,13 +174,15 @@ export function createInitialState(
   projectId: string,
   requirementId: string,
   rawRequirement: string,
-  projectDescription: string = ''
+  projectDescription: string = '',
+  systemConfig: WorkflowSystemConfig | null = null
 ): Partial<PresalesState> {
   return {
     projectId,
     requirementId,
     rawRequirement,
     projectDescription,
+    systemConfig,
     messages: [],
     analysis: null,
     functions: [],

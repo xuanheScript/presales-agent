@@ -51,14 +51,36 @@ const STEP_ORDER: Record<string, number> = {
   complete: 4,
 }
 
+// 功能模块类型（用于计算工时）
+interface FunctionModule {
+  estimatedHours: number
+  difficultyLevel: 'simple' | 'medium' | 'complex' | 'very_complex'
+}
+
+// 难度系数（与 constants 保持一致）
+const DIFFICULTY_MULTIPLIERS: Record<string, number> = {
+  simple: 1.0,
+  medium: 1.5,
+  complex: 2.5,
+  very_complex: 4.0,
+}
+
 // 工作流结果类型（从服务端复制，避免导入服务端模块）
 interface WorkflowResult {
   success: boolean
   analysis: unknown
-  functions: unknown[]
-  estimation: { totalHours?: number } | null
+  functions: FunctionModule[]
+  estimation: { breakdownRatio?: { development: number; testing: number; integration: number } } | null
   cost: { totalCost?: number } | null
   error: string | null
+}
+
+// 计算加权工时
+function calculateWeightedHours(functions: FunctionModule[]): number {
+  return functions.reduce((sum, fn) => {
+    const multiplier = DIFFICULTY_MULTIPLIERS[fn.difficultyLevel] || 1
+    return sum + fn.estimatedHours * multiplier
+  }, 0)
 }
 
 interface AgentProgressProps {
@@ -329,7 +351,7 @@ export function AgentProgress({
             <ul className="list-disc list-inside text-xs space-y-0.5">
               <li>识别 {result.functions?.length || 0} 个功能模块</li>
               <li>
-                预估总工时 {result.estimation?.totalHours || 0} 小时
+                预估加权工时 {Math.round(calculateWeightedHours(result.functions || []))} 小时
               </li>
               <li>
                 预估总成本 ¥{result.cost?.totalCost?.toLocaleString() || 0}

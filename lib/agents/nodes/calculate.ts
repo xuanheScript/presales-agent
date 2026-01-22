@@ -1,16 +1,36 @@
-import { DEFAULT_CONFIG } from '@/constants'
+import { DEFAULT_CONFIG, DIFFICULTY_MULTIPLIERS } from '@/constants'
 import type { PresalesState, AgentCostEstimate } from '../state'
+
+/**
+ * 四舍五入到指定小数位
+ */
+function roundToDecimal(value: number, decimals: number): number {
+  const factor = Math.pow(10, decimals)
+  return Math.round(value * factor) / factor
+}
 
 /**
  * 成本计算节点
  *
- * 基于工时评估结果和配置参数计算项目成本
+ * 基于功能模块列表和配置参数计算项目成本
  * 这个节点不需要 AI 调用，纯粹是数值计算
+ *
+ * 计算逻辑：
+ * 1. 从 state.functions 计算基础工时和加权工时
+ * 2. 使用系统配置（从数据库读取）的人天成本和风险缓冲比例
+ * 3. 使用 AI 返回的工时分解比例来分配各阶段成本
  */
 export async function calculateNode(
   state: PresalesState
 ): Promise<Partial<PresalesState>> {
   // 验证前置条件
+  if (!state.functions || state.functions.length === 0) {
+    return {
+      error: '缺少功能模块列表，无法进行成本计算',
+      currentStep: 'calculate',
+    }
+  }
+
   if (!state.estimation) {
     return {
       error: '缺少工时评估结果，无法进行成本计算',
@@ -19,27 +39,55 @@ export async function calculateNode(
   }
 
   try {
-    const { totalHours, breakdown, teamComposition } = state.estimation
+    const { breakdownRatio, teamComposition } = state.estimation
 
-    // 配置参数
-    const laborCostPerDay = DEFAULT_CONFIG.LABOR_COST_PER_DAY
-    const workingHoursPerDay = DEFAULT_CONFIG.WORKING_HOURS_PER_DAY
-    const riskBufferPercentage = DEFAULT_CONFIG.RISK_BUFFER_PERCENTAGE
+    // 从系统配置获取参数（优先使用数据库配置，否则使用默认值）
+    const laborCostPerDay = state.systemConfig?.laborCostPerDay || DEFAULT_CONFIG.LABOR_COST_PER_DAY
+    const workingHoursPerDay = state.systemConfig?.workingHoursPerDay || DEFAULT_CONFIG.WORKING_HOURS_PER_DAY
+    const riskBufferPercentage = state.systemConfig?.riskBufferPercentage || DEFAULT_CONFIG.RISK_BUFFER_PERCENTAGE
 
-    // 计算人天数
-    const workDays = Math.ceil(totalHours / workingHoursPerDay)
+    // 从功能模块列表计算基础工时和加权工时（代码计算，不依赖 AI）
+    let baseHours = 0
+    let weightedHours = 0
+    for (const fn of state.functions) {
+      baseHours += fn.estimatedHours
+      const multiplier = DIFFICULTY_MULTIPLIERS[fn.difficultyLevel] || 1
+      weightedHours += fn.estimatedHours * multiplier
+    }
 
-    // 计算人力成本
-    const laborCost = workDays * laborCostPerDay
+    console.log('[Agent] 工时计算（代码计算）:', {
+      baseHours,
+      weightedHours,
+      laborCostPerDay,
+      riskBufferPercentage,
+    })
+
+    // 使用加权工时计算人天数（保留小数，不取整）
+    const totalHours = weightedHours
+    const workDays = roundToDecimal(totalHours / workingHoursPerDay, 1)
+
+    // 计算人力成本（使用精确的人天数）
+    const laborCost = Math.round(workDays * laborCostPerDay)
+
+    // 直接使用 AI 返回的比例（已在 estimate 节点归一化）
+    const devRatio = breakdownRatio.development
+    const testRatio = breakdownRatio.testing
+    const integrationRatio = breakdownRatio.integration
+
+    // 按比例分配加权工时到各阶段
+    const developmentHours = totalHours * devRatio
+    const testingHours = totalHours * testRatio
+    const integrationHours = totalHours * integrationRatio
+
+    // 计算各阶段人天数（保留小数）
+    const developmentDays = roundToDecimal(developmentHours / workingHoursPerDay, 1)
+    const testingDays = roundToDecimal(testingHours / workingHoursPerDay, 1)
+    const integrationDays = roundToDecimal(integrationHours / workingHoursPerDay, 1)
 
     // 计算各阶段成本
-    const developmentDays = Math.ceil(breakdown.development / workingHoursPerDay)
-    const testingDays = Math.ceil(breakdown.testing / workingHoursPerDay)
-    const integrationDays = Math.ceil(breakdown.integration / workingHoursPerDay)
-
-    const developmentCost = developmentDays * laborCostPerDay
-    const testingCost = testingDays * laborCostPerDay
-    const integrationCost = integrationDays * laborCostPerDay
+    const developmentCost = Math.round(developmentDays * laborCostPerDay)
+    const testingCost = Math.round(testingDays * laborCostPerDay)
+    const integrationCost = Math.round(integrationDays * laborCostPerDay)
 
     // 计算第三方服务成本（根据项目规模估算）
     const thirdPartyServices: { name: string; cost: number }[] = []

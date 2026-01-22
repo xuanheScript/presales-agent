@@ -70,7 +70,7 @@ export function SystemConfigForm({ config }: SystemConfigFormProps) {
               name="labor_cost_per_day"
               type="number"
               min="1"
-              step="100"
+              step="1"
               defaultValue={config?.default_labor_cost_per_day || DEFAULT_CONFIG.LABOR_COST_PER_DAY}
               className="pl-8"
               required
