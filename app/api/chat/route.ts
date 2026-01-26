@@ -1,15 +1,18 @@
-import { streamText, convertToModelMessages, type UIMessage } from 'ai'
+import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from 'ai'
 import { defaultModel } from '@/lib/ai/config'
+import { createChatTools } from '@/lib/ai/chat-tools'
 import { getProject } from '@/app/actions/projects'
 import { getLatestRequirement } from '@/app/actions/requirements'
 import { getFunctionModules } from '@/app/actions/functions'
 import { getCostEstimate } from '@/app/actions/costs'
+import { saveChatMessages } from '@/app/actions/chat-sessions'
 
-export const maxDuration = 60
+export const maxDuration = 120 // 增加超时时间以支持工具调用
 
 interface ChatRequest {
   messages: UIMessage[]
   projectId: string
+  sessionId?: string // 会话 ID，用于消息持久化
 }
 
 /**
@@ -17,10 +20,11 @@ interface ChatRequest {
  *
  * 对话式需求澄清 API
  * 支持与 Agent 进行多轮对话，补充和澄清需求细节
+ * 现在支持工具调用，可以保存对话中确认的信息到数据库
  */
 export async function POST(req: Request) {
   try {
-    const { messages, projectId }: ChatRequest = await req.json()
+    const { messages, projectId, sessionId }: ChatRequest = await req.json()
 
     if (!projectId) {
       return new Response(
@@ -44,21 +48,45 @@ export async function POST(req: Request) {
       )
     }
 
+    // 需要 requirementId 来支持工具调用
+    const requirementId = requirement?.id || ''
+
+    // 创建带有上下文的工具集
+    const tools = createChatTools({
+      projectId,
+      requirementId,
+    })
+
     // 构建系统提示词，包含项目上下文
     const systemPrompt = buildSystemPrompt(project, requirement, functions, costEstimate)
 
     // 将 UI 消息转换为模型消息格式
     const modelMessages = await convertToModelMessages(messages)
 
-    // 使用 AI SDK 进行流式对话
+    // 使用 AI SDK 进行流式对话，包含工具支持
     const result = streamText({
       model: defaultModel,
       system: systemPrompt,
       messages: modelMessages,
+      tools,
+      stopWhen: stepCountIs(5), // 允许最多 5 步工具调用
     })
 
+    // 确保即使客户端断开也能保存消息
+    if (sessionId) {
+      result.consumeStream()
+    }
+
     // AI SDK v6 使用 toUIMessageStreamResponse() 与 useChat 配合
-    return result.toUIMessageStreamResponse()
+    return result.toUIMessageStreamResponse({
+      originalMessages: messages,
+      onFinish: async ({ messages: finalMessages }) => {
+        // 如果有 sessionId，保存消息到数据库
+        if (sessionId) {
+          await saveChatMessages(sessionId, finalMessages)
+        }
+      },
+    })
   } catch (error) {
     console.error('[Chat API] 对话失败:', error)
 
@@ -111,7 +139,7 @@ ${requirement.raw_content || '无'}
     const totalHours = functions.reduce((sum, f) => sum + f.estimated_hours, 0)
     contextInfo += `
 ## 功能模块（共 ${functions.length} 个，总工时 ${totalHours} 小时）
-${functions.slice(0, 10).map(f => `- ${f.module_name} / ${f.function_name}：${f.estimated_hours}小时（${f.difficulty_level}）`).join('\n')}
+${functions.slice(0, 10).map(f => `- [ID:${f.id}] ${f.module_name} / ${f.function_name}：${f.estimated_hours}小时（${f.difficulty_level}）`).join('\n')}
 ${functions.length > 10 ? `\n... 还有 ${functions.length - 10} 个功能` : ''}
 `
   }
@@ -138,6 +166,47 @@ ${contextInfo}
 2. **方案建议**：基于你的经验，给出技术方案和架构建议
 3. **风险提示**：识别潜在风险，给出规避建议
 4. **成本解释**：解释成本构成，回答关于报价的疑问
+5. **信息保存**：当用户确认了新的需求细节、功能点或修改时，使用工具将信息保存到数据库
+
+## 可用工具
+
+你有以下工具可以使用来保存和查询数据：
+
+### 需求管理
+- updateRequirement: 更新需求内容
+- appendRequirement: 追加需求内容（不覆盖原有）
+- updateParsedRequirement: 更新需求分析结果（项目类型、业务目标、技术栈等）
+
+### 功能模块
+- addFunctionModule: 添加单个功能模块
+- addFunctionModulesBatch: 批量添加功能模块
+- updateFunctionHours: 更新功能工时
+- updateFunctionDifficulty: 更新功能难度
+- deleteFunctionModule: 删除功能模块
+- addFromLibrary: 从功能库添加标准功能
+
+### 成本估算
+- updateCostParameters: 更新成本参数（风险缓冲、服务成本等）
+- recalculateCost: 重新计算总成本
+
+### 项目信息
+- updateProjectDescription: 更新项目描述
+- updateProjectIndustry: 更新项目行业
+
+### 查询工具
+- getFunctionModules: 获取功能模块列表
+- getCostSummary: 获取成本汇总
+- searchFunctionLibrary: 搜索功能库
+- getProjectSummary: 获取项目汇总
+- getSystemConfig: 获取系统成本配置（人天成本、风险缓冲比例等），这是成本估算的核心数据源
+
+## 工具使用原则
+
+1. **获得确认后再保存**：在保存信息前，确保用户已明确确认
+2. **成本计算前获取配置**：在进行成本估算或向用户解释成本时，先调用 getSystemConfig 获取最新的人天成本和风险缓冲比例配置
+3. **及时更新成本**：添加或修改功能后，调用 recalculateCost 更新成本
+4. **主动查询**：需要了解当前状态时，使用查询工具获取最新数据
+5. **批量操作**：多个功能一起添加时，使用 addFunctionModulesBatch
 
 ## 对话风格
 
@@ -145,6 +214,7 @@ ${contextInfo}
 - 主动提问，引导客户思考未考虑到的细节
 - 给出建议时要有理有据
 - 回答简洁，避免过长
+- 保存信息后，简要告知用户已保存的内容
 
 ## 需要主动询问的常见问题
 
@@ -156,5 +226,5 @@ ${contextInfo}
 - 上线时间要求
 - 预算范围
 
-请开始对话，帮助客户完善需求。`
+请开始对话，帮助客户完善需求。当客户确认了新的信息时，记得使用工具保存。`
 }

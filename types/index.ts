@@ -149,3 +149,25 @@ export interface SystemConfig {
   updated_at: string
   updated_by: string
 }
+
+// 聊天会话类型
+export interface ChatSession {
+  id: string
+  project_id: string
+  title: string | null
+  created_at: string
+  updated_at: string
+}
+
+// 聊天消息类型（与 UIMessage 兼容）
+export interface ChatMessage {
+  id: string
+  session_id: string
+  role: 'user' | 'assistant'
+  parts: Array<{
+    type: string
+    text?: string
+    [key: string]: unknown
+  }>
+  created_at: string
+}
