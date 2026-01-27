@@ -9,18 +9,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getProject } from '@/app/actions/projects'
+import { ProjectTabs } from '@/components/project/project-tabs'
 import {
   ArrowLeft,
   MoreHorizontal,
   Pencil,
   Archive,
   Trash2,
-  FileText,
-  Layers,
-  Calculator,
-  FileOutput,
 } from 'lucide-react'
 
 interface ProjectLayoutProps {
@@ -34,13 +30,6 @@ const statusMap: Record<string, { label: string; variant: 'default' | 'secondary
   completed: { label: '已完成', variant: 'outline' },
   archived: { label: '已归档', variant: 'destructive' },
 }
-
-const tabs = [
-  { value: '', label: '需求输入', icon: FileText },
-  { value: '/functions', label: '功能明细', icon: Layers },
-  { value: '/estimation', label: '成本估算', icon: Calculator },
-  { value: '/report', label: '报告预览', icon: FileOutput },
-]
 
 export default async function ProjectLayout({ children, params }: ProjectLayoutProps) {
   const { id } = await params
@@ -101,18 +90,7 @@ export default async function ProjectLayout({ children, params }: ProjectLayoutP
       </div>
 
       {/* 标签页导航 */}
-      <Tabs defaultValue="" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          {tabs.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value} asChild>
-              <Link href={`/projects/${id}${tab.value}`} className="flex items-center gap-2">
-                <tab.icon className="h-4 w-4" />
-                <span className="hidden sm:inline">{tab.label}</span>
-              </Link>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      <ProjectTabs projectId={id} />
 
       {/* 页面内容 */}
       {children}

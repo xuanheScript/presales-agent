@@ -1,23 +1,23 @@
-import { createDeepSeek } from '@ai-sdk/deepseek'
+import { createGateway } from 'ai'
 
 /**
- * DeepSeek AI 配置
+ * AI Gateway 配置
  *
- * 使用 Vercel AI SDK DeepSeek Provider
- * 文档: https://ai-sdk.dev/providers/ai-sdk-providers/deepseek
+ * 使用 Vercel AI SDK Gateway 统一访问 AI 模型
+ * 文档: https://ai-sdk.dev/providers/ai-sdk-providers/ai-gateway
  *
  * 环境变量配置:
- * - DEEPSEEK_API_KEY: DeepSeek API 密钥 (必需)
- * - DEEPSEEK_MODEL: 模型名称 (可选，默认: deepseek-chat)
+ * - AI_GATEWAY_API_KEY: Gateway API 密钥 (必需)
+ * - AI_GATEWAY_MODEL: 模型名称 (如: anthropic/claude-sonnet-4-20250514)
  */
 
-// 创建 DeepSeek 实例
-const deepseek = createDeepSeek({
-  apiKey: process.env.DEEPSEEK_API_KEY ?? '',
+// 创建 Gateway 实例
+const gateway = createGateway({
+  apiKey: process.env.AI_GATEWAY_API_KEY,
 })
 
 // 模型名称 - 从环境变量读取
-const MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat'
+const MODEL = process.env.AI_GATEWAY_MODEL || 'anthropic/claude-sonnet-4-20250514'
 
 // 导出默认模型实例
-export const defaultModel = deepseek(MODEL)
+export const defaultModel = gateway(MODEL)

@@ -273,6 +273,67 @@ export async function deleteRequirement(id: string): Promise<RequirementActionRe
   return { success: true }
 }
 
+// 更新需求的解析结果和原始内容（用于 elicitation 完成后）
+export async function updateRequirementParsedContent(
+  id: string,
+  parsedContent: ParsedRequirement,
+  rawContent?: string
+): Promise<RequirementActionResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: '请先登录' }
+  }
+
+  const { data: requirement, error: fetchError } = await supabase
+    .from('requirements')
+    .select(`
+      project_id,
+      projects!inner(created_by)
+    `)
+    .eq('id', id)
+    .eq('projects.created_by', user.id)
+    .maybeSingle()
+
+  if (fetchError) {
+    console.error('查询需求失败:', fetchError)
+    return { error: '查询需求失败，请重试' }
+  }
+
+  if (!requirement) {
+    return { error: '需求不存在或无权限' }
+  }
+
+  const updateData: { parsed_content: ParsedRequirement; raw_content?: string } = {
+    parsed_content: parsedContent,
+  }
+
+  if (rawContent) {
+    updateData.raw_content = rawContent
+  }
+
+  const { data, error } = await supabase
+    .from('requirements')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+    .maybeSingle()
+
+  if (error) {
+    console.error('更新需求解析结果失败:', error)
+    return { error: '更新需求解析结果失败，请重试' }
+  }
+
+  if (!data) {
+    console.error('更新需求解析结果失败: 未找到匹配的记录')
+    return { error: '更新需求解析结果失败，请检查权限' }
+  }
+
+  revalidatePath(`/projects/${requirement.project_id}`)
+  return { success: true, data }
+}
+
 // 获取项目的最新需求
 export async function getLatestRequirement(projectId: string): Promise<Requirement | null> {
   const supabase = await createClient()

@@ -2,6 +2,7 @@ import { generateText, Output } from 'ai'
 import { z } from 'zod'
 import { defaultModel } from '@/lib/ai/config'
 import { getActiveTemplate } from '@/app/actions/templates'
+import { createTelemetryConfig } from '@/lib/observability/langfuse'
 import type { PresalesState, AgentAnalysisResult } from '../state'
 
 /**
@@ -111,6 +112,10 @@ export async function analyzeNode(
         schema: requirementAnalysisSchema,
       }),
       prompt,
+      experimental_telemetry: createTelemetryConfig('workflow-analyze', {
+        projectId: state.projectId,
+        requirementId: state.requirementId,
+      }),
     })
 
     // 验证输出

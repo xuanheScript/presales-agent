@@ -221,9 +221,7 @@ export function AgentChat({ projectId, className }: AgentChatProps) {
 
   // 会话删除后的处理
   const handleSessionDeleted = () => {
-    // 重新加载会话列表
     loadSessions()
-    // 如果删除的是当前会话，清空状态
     if (sessions.find(s => s.id === currentSessionId) === undefined) {
       setCurrentSessionId(null)
       setInitialMessages([])
@@ -235,7 +233,7 @@ export function AgentChat({ projectId, className }: AgentChatProps) {
     messages: initialMessages,
     transport: new DefaultChatTransport({
       api: '/api/chat',
-      body: { projectId, sessionId: currentSessionId },
+      body: { projectId, sessionId: currentSessionId, mode: 'internal' },
     }),
     onFinish: () => {
       // 对话完成后，检查是否需要刷新会话列表（用于更新标题）
@@ -300,6 +298,7 @@ export function AgentChat({ projectId, className }: AgentChatProps) {
                 <Trash2 className="h-4 w-4" />
               </Button>
             )}
+
             <Button
               variant="ghost"
               size="sm"
@@ -324,7 +323,7 @@ export function AgentChat({ projectId, className }: AgentChatProps) {
       <CardContent className="flex-1 flex min-h-0 p-0">
         {/* 会话列表侧边栏 */}
         {showSidebar && (
-          <div className={cn(sidebarWidth, 'shrink-0')}>
+          <div className={cn(sidebarWidth, 'shrink-0 border-r')}>
             <ChatSessionList
               sessions={sessions}
               currentSessionId={currentSessionId}
