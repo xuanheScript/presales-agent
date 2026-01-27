@@ -70,21 +70,23 @@ cp .env.local.example .env.local
 
 ```bash
 # Supabase 配置（从 Supabase 项目设置中获取）
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_URL=your_supabase_url
+SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
 # AI Gateway 模型配置（通过环境变量自定义）
-AI_GATEWAY_MODEL=anthropic/claude-sonnet-4           # 默认模型
-AI_GATEWAY_MODEL_FAST=anthropic/claude-haiku         # 快速模型（可选）
-AI_GATEWAY_MODEL_POWERFUL=anthropic/claude-opus-4    # 强力模型（可选）
+AI_GATEWAY_MODEL=anthropic/claude-sonnet-4
 
-# 应用 URL
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+# AI_GATEWAY_API_KEY: Gateway API 密钥 (必需)
+AI_GATEWAY_API_KEY=sk-xxxxxxxxx
 
-# 成本配置（可选）
-DEFAULT_LABOR_COST_PER_DAY=1500
-DEFAULT_RISK_BUFFER_PERCENTAGE=15
+
+# Langfuse 观测性配置 (可选)
+# 文档: https://langfuse.com/docs/get-started
+LANGFUSE_SECRET_KEY=sk-lf-xxxxxxxxx                    # Langfuse Secret Key
+LANGFUSE_PUBLIC_KEY=pk-lf-xxxxxxxxx                    # Langfuse Public Key
+LANGFUSE_BASE_URL=https://cloud.langfuse.com           # Langfuse API URL (默认: https://cloud.langfuse.com)
+
 ```
 
 4. **设置 Supabase 数据库**

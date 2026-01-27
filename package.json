@@ -1,6 +1,6 @@
 {
   "name": "presales-agent",
-  "version": "0.1.0",
+  "version": "1.2.0",
   "private": true,
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -11,7 +11,9 @@
     "dev": "next dev --port 4000",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "changelog": "conventional-changelog -p angular -i CHANGELOG.md -s",
+    "changelog:first": "conventional-changelog -p angular -i CHANGELOG.md -s -r 0"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.7",
@@ -81,6 +83,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "conventional-changelog-cli": "^5.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "supabase": "^2.71.0",
