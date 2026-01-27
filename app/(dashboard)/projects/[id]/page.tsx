@@ -1,15 +1,13 @@
 import { Suspense } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Sparkles, FileText, Upload, MessageCircle } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { getProject } from '@/app/actions/projects'
 import { getLatestRequirement } from '@/app/actions/requirements'
 import { notFound } from 'next/navigation'
+import Link from 'next/link'
 import { RequirementInput } from '@/components/project/requirement-input'
 import { FileUpload } from '@/components/project/file-upload'
-import { AgentProgress } from '@/components/agent/agent-progress'
-import { AgentChat } from '@/components/agent/agent-chat'
 
 interface ProjectPageProps {
   params: Promise<{ id: string }>
@@ -25,11 +23,13 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">需求输入</h2>
-        <p className="text-muted-foreground">
-          输入项目需求后，AI 将自动分析并生成成本估算
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">需求输入</h2>
+          <p className="text-muted-foreground">
+            输入或上传项目需求文档，保存后即可进行 AI 分析
+          </p>
+        </div>
       </div>
 
       <Suspense fallback={<RequirementSkeleton />}>
@@ -43,157 +43,118 @@ async function RequirementContent({ projectId }: { projectId: string }) {
   const requirement = await getLatestRequirement(projectId)
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      {/* 需求输入区域 */}
-      <div className="space-y-6">
-        <Tabs defaultValue="text" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="text" className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              文本输入
-            </TabsTrigger>
-            <TabsTrigger value="upload" className="flex items-center gap-2">
-              <Upload className="h-4 w-4" />
-              文档上传
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="text" className="mt-4">
-            <RequirementInput
-              projectId={projectId}
-              requirement={requirement}
-            />
-          </TabsContent>
-          <TabsContent value="upload" className="mt-4">
-            <FileUpload projectId={projectId} />
-          </TabsContent>
-        </Tabs>
-      </div>
-
-      {/* AI 分析区域 */}
-      <div className="space-y-6">
-        <Tabs defaultValue="analysis" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="analysis" className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4" />
-              AI 分析
-            </TabsTrigger>
-            <TabsTrigger value="chat" className="flex items-center gap-2">
-              <MessageCircle className="h-4 w-4" />
-              需求澄清
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="analysis" className="mt-4">
-            {requirement ? (
-              <AgentProgress
-                projectId={projectId}
-                requirementId={requirement.id}
-              />
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5" />
-                    AI 分析
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Sparkles className="mx-auto h-10 w-10 mb-4 opacity-50" />
-                    <p className="font-medium">请先输入需求</p>
-                    <p className="text-sm mt-1">
-                      保存需求后即可开始 AI 分析
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-          <TabsContent value="chat" className="mt-4">
-            <AgentChat projectId={projectId} className="h-[500px]" />
-          </TabsContent>
-        </Tabs>
-
-        {/* 分析结果预览 */}
-        {requirement?.parsed_content && (
-          <Card>
-            <CardHeader>
-              <CardTitle>分析结果预览</CardTitle>
-              <CardDescription>
-                上次分析结果
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+    <div className="space-y-6">
+      {/* 需求状态提示 */}
+      {requirement ? (
+        <Card className="border-green-200 bg-green-50/50">
+          <CardContent className="flex items-center justify-between py-4">
+            <div className="flex items-center gap-3">
+              <div className="h-2 w-2 rounded-full bg-green-500" />
               <div>
-                <h4 className="text-sm font-medium mb-2">项目类型</h4>
-                <p className="text-sm text-muted-foreground">
-                  {requirement.parsed_content.projectType}
+                <p className="font-medium text-green-800">需求已保存</p>
+                <p className="text-sm text-green-600">
+                  上次保存: {new Date(requirement.created_at).toLocaleString('zh-CN')}
                 </p>
               </div>
+            </div>
+            <Link
+              href={`/projects/${projectId}/analysis`}
+              className="inline-flex items-center gap-2 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors"
+            >
+              开始 AI 分析
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-amber-200 bg-amber-50/50">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-3">
+              <div className="h-2 w-2 rounded-full bg-amber-500" />
               <div>
-                <h4 className="text-sm font-medium mb-2">核心功能</h4>
-                <ul className="text-sm text-muted-foreground list-disc list-inside">
-                  {requirement.parsed_content.keyFeatures.slice(0, 5).map((feature, index) => (
-                    <li key={index}>{feature}</li>
-                  ))}
-                  {requirement.parsed_content.keyFeatures.length > 5 && (
-                    <li>... 还有 {requirement.parsed_content.keyFeatures.length - 5} 项</li>
-                  )}
-                </ul>
+                <p className="font-medium text-amber-800">尚未保存需求</p>
+                <p className="text-sm text-amber-600">
+                  请通过下方任一方式输入需求内容
+                </p>
               </div>
-              <div>
-                <h4 className="text-sm font-medium mb-2">技术栈</h4>
-                <div className="flex flex-wrap gap-1">
-                  {requirement.parsed_content.techStack.map((tech, index) => (
-                    <span
-                      key={index}
-                      className="inline-flex items-center rounded-full bg-muted px-2 py-1 text-xs"
-                    >
-                      {tech}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              {requirement.parsed_content.risks.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium mb-2">风险提示</h4>
-                  <ul className="text-sm text-muted-foreground list-disc list-inside">
-                    {requirement.parsed_content.risks.slice(0, 3).map((risk, index) => (
-                      <li key={index}>{risk}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 输入方式 */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* 文本输入 */}
+        <RequirementInput
+          projectId={projectId}
+          requirement={requirement}
+        />
+
+        {/* 文档上传 */}
+        <FileUpload projectId={projectId} />
       </div>
+
+      {/* 使用提示 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">使用提示</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ul className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
+            <li className="flex items-start gap-2">
+              <span className="mt-1 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+              <span>支持直接粘贴需求文本或上传文档</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+              <span>文档支持 Word (.docx) 和 PDF 格式</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+              <span>需求内容越详细，AI 分析结果越准确</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+              <span>保存后可随时修改，支持多次分析</span>
+            </li>
+          </ul>
+        </CardContent>
+      </Card>
     </div>
   )
 }
 
 function RequirementSkeleton() {
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className="space-y-6">
       <Card>
-        <CardHeader>
-          <Skeleton className="h-6 w-24" />
-          <Skeleton className="h-4 w-48" />
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Skeleton className="h-[200px] w-full" />
-          <div className="flex justify-end">
-            <Skeleton className="h-10 w-24" />
-          </div>
+        <CardContent className="py-4">
+          <Skeleton className="h-6 w-48" />
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-6 w-24" />
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-[250px] w-full" />
-        </CardContent>
-      </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-24" />
+            <Skeleton className="h-4 w-48" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Skeleton className="h-[200px] w-full" />
+            <div className="flex justify-end">
+              <Skeleton className="h-10 w-24" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-24" />
+            <Skeleton className="h-4 w-48" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-[200px] w-full" />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { generateText, Output } from 'ai'
 import { z } from 'zod'
 import { defaultModel } from '@/lib/ai/config'
 import { DIFFICULTY_MULTIPLIERS } from '@/constants'
+import { createTelemetryConfig } from '@/lib/observability/langfuse'
 import type { PresalesState, AgentEffortEstimation } from '../state'
 
 /**
@@ -154,6 +155,12 @@ export async function estimateNode(
         schema: effortEstimationSchema,
       }),
       prompt,
+      experimental_telemetry: createTelemetryConfig('workflow-estimate', {
+        projectId: state.projectId,
+        requirementId: state.requirementId,
+        modulesCount: state.functions.length,
+        weightedHours,
+      }),
     })
 
     // 验证输出

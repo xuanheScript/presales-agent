@@ -1,6 +1,7 @@
 import { generateText, Output } from 'ai'
 import { z } from 'zod'
 import { defaultModel } from '@/lib/ai/config'
+import { createTelemetryConfig } from '@/lib/observability/langfuse'
 import type { PresalesState, AgentFunctionModule } from '../state'
 
 /**
@@ -108,6 +109,10 @@ export async function breakdownNode(
         schema: functionModulesSchema,
       }),
       prompt,
+      experimental_telemetry: createTelemetryConfig('workflow-breakdown', {
+        projectId: state.projectId,
+        requirementId: state.requirementId,
+      }),
     })
 
     // 验证输出

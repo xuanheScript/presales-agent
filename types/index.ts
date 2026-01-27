@@ -171,3 +171,110 @@ export interface ChatMessage {
   }>
   created_at: string
 }
+
+// Elicitation 会话类型
+export interface ElicitationSession {
+  id: string
+  project_id: string
+  status: 'active' | 'completed' | 'cancelled'
+  current_round: number
+  max_rounds: number
+  collected_info: ElicitationCollectedInfo
+  created_at: string
+  updated_at: string
+  completed_at: string | null
+}
+
+export interface ElicitationCollectedInfo {
+  // === 项目基础（对应 ParsedRequirement.projectType） ===
+  projectType?: string
+  projectSummary?: string
+
+  // === 业务目标（对应 ParsedRequirement.businessGoals） ===
+  businessGoals?: string[]
+
+  // === 功能范围（对应 ParsedRequirement.keyFeatures） ===
+  keyFeatures?: string[]
+  outOfScope?: string[]
+
+  // === 技术相关（对应 ParsedRequirement.techStack） ===
+  techStack?: string[]
+  platforms?: string[] // Web/Mobile/Desktop/小程序等
+  integrations?: string[] // 第三方集成需求
+
+  // === 非功能需求（对应 ParsedRequirement.nonFunctionalRequirements） ===
+  nonFunctionalRequirements?: {
+    performance?: string // 性能要求
+    security?: string // 安全要求
+    scalability?: string // 扩展性/并发要求
+    availability?: string // 可用性要求
+  }
+
+  // === 用户与场景 ===
+  targetUsers?: string[]
+  userVolume?: string
+  useCases?: string[]
+
+  // === 约束与风险（对应 ParsedRequirement.risks） ===
+  constraints?: string[] // 技术/业务约束
+  risks?: string[] // 潜在风险
+
+  // === 时间与预算 ===
+  timeline?: {
+    deadline?: string
+    priority?: 'urgent' | 'normal' | 'flexible'
+  }
+  budget?: string
+
+  // === 元信息（用于进度跟踪） ===
+  _meta?: {
+    lastUpdatedRound: number
+    confirmedFields: string[] // 已确认的字段列表
+  }
+}
+
+export interface ElicitationMessage {
+  id: string
+  session_id: string
+  round: number
+  role: 'assistant' | 'user'
+  content: string
+  questions?: ElicitationQuestion[]
+  created_at: string
+}
+
+// 选项式问题的选项
+export interface ElicitationOption {
+  id: string
+  label: string
+  description?: string
+}
+
+// 引导问题（带选项）
+export interface ElicitationQuestion {
+  id: string
+  question: string
+  description?: string // 问题的补充说明
+  options: ElicitationOption[]
+  allowMultiple?: boolean // 是否允许多选
+  allowCustom?: boolean // 是否允许自定义输入
+  fieldKey?: string // 对应要更新的字段
+}
+
+// 用户对问题的回答
+export interface ElicitationAnswer {
+  questionId: string
+  selectedOptions: string[] // 选中的选项 id 列表
+  customInput?: string // 自定义输入内容
+}
+
+// 聊天模式类型
+export type ChatMode = 'internal' | 'elicitation'
+
+// AI 生成的引导状态
+export interface ElicitationState {
+  currentQuestions: ElicitationQuestion[] // 当前待回答的问题
+  answeredCount: number // 已回答的问题数量
+  isComplete: boolean // AI 判断是否已完成
+  summary?: string // AI 对当前收集信息的总结
+}
