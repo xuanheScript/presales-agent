@@ -138,6 +138,7 @@ export function AgentProgress({
 
   // 引导模式状态
   const [elicitationSession, setElicitationSession] = useState<ElicitationSession | null>(null)
+  const [isLoadingSession, setIsLoadingSession] = useState(false)
   const [isElicitationComplete, setIsElicitationComplete] = useState(false)
   const [isCompletingElicitation, setIsCompletingElicitation] = useState(false)
   const [hasTriggeredFirstMessage, setHasTriggeredFirstMessage] = useState(false)
@@ -203,8 +204,21 @@ export function AgentProgress({
     setAnalysisMode(mode)
 
     if (mode === 'professional') {
-      // 只加载现有会话状态，不创建新会话
-      await loadElicitationState()
+      setIsLoadingSession(true)
+      try {
+        // 先尝试加载现有会话状态
+        await loadElicitationState()
+
+        // 如果没有找到会话，创建新会话
+        const activeSession = await getActiveElicitationSession(projectId)
+        const latestSession = await getLatestElicitationSession(projectId)
+
+        if (!activeSession && !latestSession) {
+          await initElicitation()
+        }
+      } finally {
+        setIsLoadingSession(false)
+      }
     }
   }
 
@@ -814,10 +828,19 @@ export function AgentProgress({
               <p className="text-sm text-muted-foreground mb-4">AI 将根据您的需求生成引导问题</p>
               <Button
                 onClick={handleStartElicitation}
-                disabled={!elicitationSession}
+                disabled={!elicitationSession || isLoadingSession}
               >
-                <Sparkles className="mr-2 h-4 w-4" />
-                开始引导
+                {isLoadingSession ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    加载中...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    开始引导
+                  </>
+                )}
               </Button>
             </div>
           )}
