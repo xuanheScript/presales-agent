@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import type { EstimateReference, RoleEstimate } from '@/types'
+import type { EstimateReference } from '@/types'
 
 /**
  * 获取估算参考列表（支持筛选）
@@ -285,11 +285,13 @@ export async function incrementReferenceUsage(ids: string[]): Promise<void> {
 
   // 逐个更新使用计数（Supabase 不支持批量 increment）
   for (const id of ids) {
-    await supabase.rpc('increment_estimate_reference_usage', {
-      reference_id: id,
-    }).catch(() => {
+    try {
+      await supabase.rpc('increment_estimate_reference_usage', {
+        reference_id: id,
+      })
+    } catch {
       // 静默失败，不影响主流程
-    })
+    }
   }
 }
 
