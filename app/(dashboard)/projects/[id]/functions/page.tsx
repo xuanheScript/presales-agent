@@ -1,9 +1,15 @@
 import { Suspense } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FunctionTable } from '@/components/project/function-table'
+import { RoleSummaryTable } from '@/components/project/role-summary-table'
+import { AdditionalWorkTable } from '@/components/project/additional-work-table'
 import { getFunctionModules, getFunctionSummary } from '@/app/actions/functions'
-import { DIFFICULTY_MULTIPLIERS, DEFAULT_CONFIG } from '@/constants'
+import { getProjectRoles, getAdditionalWorkItems, getAdditionalWorkSummary } from '@/app/actions/roles'
+import { getLatestRequirement } from '@/app/actions/requirements'
+import { getProject } from '@/app/actions/projects'
+import { DEFAULT_CONFIG } from '@/constants'
 
 /**
  * 工时转人天（保留1位小数）
@@ -36,16 +42,22 @@ export default async function FunctionsPage({ params }: FunctionsPageProps) {
 }
 
 async function FunctionsContent({ projectId }: { projectId: string }) {
-  const [functions, summary] = await Promise.all([
+  const [functions, summary, roles, additionalWork, additionalWorkSummary, requirement, project] = await Promise.all([
     getFunctionModules(projectId),
     getFunctionSummary(projectId),
+    getProjectRoles(projectId),
+    getAdditionalWorkItems(projectId),
+    getAdditionalWorkSummary(projectId),
+    getLatestRequirement(projectId),
+    getProject(projectId),
   ])
 
-  // 计算加权工时
-  const totalWeightedHours = functions.reduce((sum, fn) => {
-    const multiplier = DIFFICULTY_MULTIPLIERS[fn.difficulty_level] || 1
-    return sum + fn.estimated_hours * multiplier
-  }, 0)
+  // 构建项目元数据，用于批量提取到参考库时自动填充上下文
+  const projectMetadata = {
+    projectType: requirement?.parsed_content?.projectType,
+    industry: project?.industry || undefined,
+    techStack: requirement?.parsed_content?.techStack,
+  }
 
   return (
     <div className="space-y-6">
@@ -59,45 +71,75 @@ async function FunctionsContent({ projectId }: { projectId: string }) {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>基础工时</CardDescription>
-            <CardTitle className="text-3xl">{summary.totalHours}h</CardTitle>
-            <p className="text-sm text-muted-foreground">{hoursToWorkDays(summary.totalHours)} 人天</p>
+            <CardDescription>评估工时</CardDescription>
+            <CardTitle className="text-3xl">{hoursToWorkDays(summary.totalHours)}人天</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>加权工时</CardDescription>
-            <CardTitle className="text-3xl">{Math.round(totalWeightedHours)}h</CardTitle>
-            <p className="text-sm text-muted-foreground">{hoursToWorkDays(totalWeightedHours)} 人天</p>
+            <CardDescription>额外工作</CardDescription>
+            <CardTitle className="text-3xl">{additionalWorkSummary.totalDays}人天</CardTitle>
+            <p className="text-sm text-muted-foreground">{additionalWorkSummary.totalItems} 项</p>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>难度分布</CardDescription>
-            <CardContent className="p-0 pt-1">
-              <div className="flex gap-2 text-xs">
-                <span className="text-green-600">简单: {summary.byDifficulty.simple}</span>
-                <span className="text-yellow-600">中等: {summary.byDifficulty.medium}</span>
-                <span className="text-orange-600">复杂: {summary.byDifficulty.complex}</span>
-                <span className="text-red-600">非常复杂: {summary.byDifficulty.very_complex}</span>
-              </div>
-            </CardContent>
+            <CardDescription>总和工时</CardDescription>
+            <CardTitle className="text-3xl text-primary">{hoursToWorkDays(summary.totalHours) + additionalWorkSummary.totalDays}人天</CardTitle>
           </CardHeader>
         </Card>
       </div>
 
-      {/* 功能表格 */}
-      <Card>
-        <CardHeader>
-          <CardTitle>功能模块列表</CardTitle>
-          <CardDescription>
-            点击工时可以编辑，选择难度可以调整
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <FunctionTable projectId={projectId} functions={functions} />
-        </CardContent>
-      </Card>
+      {/* 使用 Tabs 组织内容 */}
+      <Tabs defaultValue="functions" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="functions">功能模块 ({functions.length})</TabsTrigger>
+          <TabsTrigger value="roles">角色汇总 ({roles.length})</TabsTrigger>
+          <TabsTrigger value="additional">额外工作 ({additionalWork.length})</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="functions">
+          <Card>
+            <CardHeader>
+              <CardTitle>功能模块列表</CardTitle>
+              <CardDescription>
+                点击工时可以编辑，选择难度可以调整
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <FunctionTable projectId={projectId} functions={functions} projectMetadata={projectMetadata} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="roles">
+          <Card>
+            <CardHeader>
+              <CardTitle>角色工时汇总</CardTitle>
+              <CardDescription>
+                各角色的工时分配和预估工期
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RoleSummaryTable roles={roles} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="additional">
+          <Card>
+            <CardHeader>
+              <CardTitle>额外工作项</CardTitle>
+              <CardDescription>
+                非功能开发工作，如架构设计、联调测试、部署上线等
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AdditionalWorkTable items={additionalWork} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

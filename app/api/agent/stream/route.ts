@@ -77,6 +77,8 @@ export async function POST(req: Request) {
           let lastResult: {
             analysis?: unknown
             functions?: unknown[]
+            identifiedRoles?: unknown[]
+            additionalWork?: unknown[]
             estimation?: unknown
             cost?: unknown
           } = {}
@@ -101,6 +103,8 @@ export async function POST(req: Request) {
             // 保存最新状态
             if (update.state.analysis) lastResult.analysis = update.state.analysis
             if (update.state.functions) lastResult.functions = update.state.functions
+            if (update.state.identifiedRoles) lastResult.identifiedRoles = update.state.identifiedRoles
+            if (update.state.additionalWork) lastResult.additionalWork = update.state.additionalWork
             if (update.state.estimation) lastResult.estimation = update.state.estimation
             if (update.state.cost) lastResult.cost = update.state.cost
 
@@ -146,7 +150,7 @@ export async function POST(req: Request) {
             await updateRequirementAnalysis(requirementId, parsedContent)
           }
 
-          // 保存功能模块
+          // 保存功能模块（新版本：包含按角色评估的工时）
           if (lastResult.functions && (lastResult.functions as unknown[]).length > 0) {
             await supabase
               .from('function_modules')
@@ -158,7 +162,7 @@ export async function POST(req: Request) {
               functionName: string
               description: string
               difficultyLevel: string
-              estimatedHours: number
+              roleEstimates: Array<{ role: string; days: number; reason?: string }>
               dependencies?: string[]
             }>).map((fn) => ({
               project_id: projectId,
@@ -166,22 +170,80 @@ export async function POST(req: Request) {
               function_name: fn.functionName,
               description: fn.description,
               difficulty_level: fn.difficultyLevel,
-              estimated_hours: fn.estimatedHours,
+              // 计算总工时（所有角色工时之和，转换为小时）
+              estimated_hours: fn.roleEstimates.reduce((sum, r) => sum + r.days * 8, 0),
               dependencies: fn.dependencies || null,
+              // 新增：角色工时详情
+              role_estimates: fn.roleEstimates,
             }))
 
             await supabase.from('function_modules').insert(functionModules)
           }
 
-          // 保存成本估算
+          // 保存识别的项目角色
+          if (lastResult.identifiedRoles && (lastResult.identifiedRoles as unknown[]).length > 0) {
+            await supabase
+              .from('project_roles')
+              .delete()
+              .eq('project_id', projectId)
+
+            // 从 estimation.roleSummary 获取各角色的汇总工时
+            const estimation = lastResult.estimation as {
+              roleSummary?: Array<{ role: string; totalDays: number }>
+            } | undefined
+            const roleSummaryMap = new Map(
+              estimation?.roleSummary?.map((r) => [r.role, r.totalDays]) || []
+            )
+
+            const projectRoles = (lastResult.identifiedRoles as Array<{
+              role: string
+              responsibility: string
+              headcount: number
+            }>).map((role) => ({
+              project_id: projectId,
+              role_name: role.role,
+              responsibility: role.responsibility,
+              headcount: role.headcount,
+              total_days: roleSummaryMap.get(role.role) || 0,
+            }))
+
+            await supabase.from('project_roles').insert(projectRoles)
+          }
+
+          // 保存额外工作项
+          if (lastResult.additionalWork && (lastResult.additionalWork as unknown[]).length > 0) {
+            await supabase
+              .from('additional_work_items')
+              .delete()
+              .eq('project_id', projectId)
+
+            const additionalWorkItems = (lastResult.additionalWork as Array<{
+              workItem: string
+              days: number
+              assignedRoles: string[]
+            }>).map((work) => ({
+              project_id: projectId,
+              work_item: work.workItem,
+              days: work.days,
+              assigned_roles: work.assignedRoles,
+            }))
+
+            await supabase.from('additional_work_items').insert(additionalWorkItems)
+          }
+
+          // 保存成本估算（新版本：包含按角色汇总的成本）
           if (lastResult.cost) {
             const cost = lastResult.cost as {
               laborCost: number
               serviceCost: number
               infrastructureCost: number
-              bufferPercentage: number
+              bufferCoefficient: number
               totalCost: number
-              breakdown: unknown
+              baseDays: number
+              bufferedDays: number
+              roleBreakdown?: unknown
+              additionalWorkBreakdown?: unknown
+              thirdPartyServices?: unknown
             }
 
             await supabase
@@ -194,9 +256,19 @@ export async function POST(req: Request) {
               labor_cost: cost.laborCost,
               service_cost: cost.serviceCost,
               infrastructure_cost: cost.infrastructureCost,
-              buffer_percentage: cost.bufferPercentage,
+              // 使用缓冲系数转换为百分比存储（例如 1.3 -> 30%）
+              buffer_percentage: (cost.bufferCoefficient - 1) * 100,
               total_cost: cost.totalCost,
-              breakdown: cost.breakdown,
+              // 新字段
+              base_days: cost.baseDays,
+              buffered_days: cost.bufferedDays,
+              buffer_coefficient: cost.bufferCoefficient,
+              // breakdown 包含角色明细（使用 camelCase 与前端类型一致）
+              breakdown: {
+                roleBreakdown: cost.roleBreakdown,
+                additionalWorkBreakdown: cost.additionalWorkBreakdown,
+                thirdPartyServices: cost.thirdPartyServices,
+              },
             })
           }
 

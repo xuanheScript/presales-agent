@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG, DIFFICULTY_MULTIPLIERS } from '@/constants'
+import { DEFAULT_CONFIG } from '@/constants'
 import type { PresalesState, AgentCostEstimate } from '../state'
 
 /**
@@ -15,10 +15,11 @@ function roundToDecimal(value: number, decimals: number): number {
  * 基于功能模块列表和配置参数计算项目成本
  * 这个节点不需要 AI 调用，纯粹是数值计算
  *
- * 计算逻辑：
- * 1. 从 state.functions 计算基础工时和加权工时
- * 2. 使用系统配置（从数据库读取）的人天成本和风险缓冲比例
- * 3. 使用 AI 返回的工时分解比例来分配各阶段成本
+ * 新版本计算逻辑：
+ * 1. 从 state.estimation.roleSummary 获取按角色汇总的工时
+ * 2. 使用系统配置的人天成本
+ * 3. 使用 AI 评估的缓冲系数
+ * 4. 输出按角色汇总的成本
  */
 export async function calculateNode(
   state: PresalesState
@@ -39,76 +40,71 @@ export async function calculateNode(
   }
 
   try {
-    const { breakdownRatio, teamComposition } = state.estimation
+    const { roleSummary, additionalWork, bufferCoefficient } = state.estimation
 
     // 从系统配置获取参数（优先使用数据库配置，否则使用默认值）
     const laborCostPerDay = state.systemConfig?.laborCostPerDay || DEFAULT_CONFIG.LABOR_COST_PER_DAY
-    const workingHoursPerDay = state.systemConfig?.workingHoursPerDay || DEFAULT_CONFIG.WORKING_HOURS_PER_DAY
-    const riskBufferPercentage = state.systemConfig?.riskBufferPercentage || DEFAULT_CONFIG.RISK_BUFFER_PERCENTAGE
 
-    // 从功能模块列表计算基础工时和加权工时（代码计算，不依赖 AI）
-    let baseHours = 0
-    let weightedHours = 0
-    for (const fn of state.functions) {
-      baseHours += fn.estimatedHours
-      const multiplier = DIFFICULTY_MULTIPLIERS[fn.difficultyLevel] || 1
-      weightedHours += fn.estimatedHours * multiplier
-    }
+    // 1. 计算基础总人天（功能模块 + 额外工作）
+    const moduleTotalDays = state.functions.reduce(
+      (sum, f) => sum + f.roleEstimates.reduce((s, r) => s + r.days, 0),
+      0
+    )
+    const additionalTotalDays = additionalWork.reduce((sum, w) => sum + w.days, 0)
+    const baseDays = moduleTotalDays + additionalTotalDays
 
-    console.log('[Agent] 工时计算（代码计算）:', {
-      baseHours,
-      weightedHours,
+    // 2. 应用缓冲系数
+    const bufferedDays = roundToDecimal(baseDays * bufferCoefficient, 1)
+
+    console.log('[Agent] 成本计算:', {
+      moduleTotalDays,
+      additionalTotalDays,
+      baseDays,
+      bufferCoefficient,
+      bufferedDays,
       laborCostPerDay,
-      riskBufferPercentage,
     })
 
-    // 使用加权工时计算人天数（保留小数，不取整）
-    const totalHours = weightedHours
-    const workDays = roundToDecimal(totalHours / workingHoursPerDay, 1)
+    // 3. 按角色计算成本（应用缓冲系数）
+    const roleBreakdown = roleSummary.map((r) => ({
+      role: r.role,
+      days: roundToDecimal(r.totalDays * bufferCoefficient, 1),
+      cost: Math.round(r.totalDays * bufferCoefficient * laborCostPerDay),
+      headcount: r.headcount,
+    }))
 
-    // 计算人力成本（使用精确的人天数）
-    const laborCost = Math.round(workDays * laborCostPerDay)
+    // 4. 额外工作项成本
+    const additionalWorkBreakdown = additionalWork.map((w) => ({
+      workItem: w.workItem,
+      days: roundToDecimal(w.days * bufferCoefficient, 1),
+      cost: Math.round(w.days * bufferCoefficient * laborCostPerDay),
+    }))
 
-    // 直接使用 AI 返回的比例（已在 estimate 节点归一化）
-    const devRatio = breakdownRatio.development
-    const testRatio = breakdownRatio.testing
-    const integrationRatio = breakdownRatio.integration
+    // 5. 计算人力成本
+    const laborCost = Math.round(bufferedDays * laborCostPerDay)
 
-    // 按比例分配加权工时到各阶段
-    const developmentHours = totalHours * devRatio
-    const testingHours = totalHours * testRatio
-    const integrationHours = totalHours * integrationRatio
-
-    // 计算各阶段人天数（保留小数）
-    const developmentDays = roundToDecimal(developmentHours / workingHoursPerDay, 1)
-    const testingDays = roundToDecimal(testingHours / workingHoursPerDay, 1)
-    const integrationDays = roundToDecimal(integrationHours / workingHoursPerDay, 1)
-
-    // 计算各阶段成本
-    const developmentCost = Math.round(developmentDays * laborCostPerDay)
-    const testingCost = Math.round(testingDays * laborCostPerDay)
-    const integrationCost = Math.round(integrationDays * laborCostPerDay)
-
-    // 计算第三方服务成本（根据项目规模估算）
+    // 6. 计算第三方服务成本（根据项目规模估算）
     const thirdPartyServices: { name: string; cost: number }[] = []
 
     // 根据团队规模估算云服务成本
-    const teamSize = teamComposition.reduce((sum, t) => sum + t.count, 0)
-    const avgDuration = teamComposition.reduce((sum, t) => sum + t.duration, 0) / teamComposition.length
+    const teamSize = roleSummary.reduce((sum, r) => sum + r.headcount, 0)
+    // 估算项目周期（按最大角色工时 / 人数计算）
+    const maxRoleDays = Math.max(...roleSummary.map((r) => r.totalDays / r.headcount))
+    const estimatedDuration = Math.ceil(maxRoleDays * bufferCoefficient)
 
     // 开发环境费用
     if (teamSize >= 3) {
       thirdPartyServices.push({
         name: '云服务器（开发测试环境）',
-        cost: Math.ceil(avgDuration / 30) * 2000, // 每月约 2000 元
+        cost: Math.ceil(estimatedDuration / 30) * 2000, // 每月约 2000 元
       })
     }
 
     // CI/CD 工具费用
-    if (totalHours > 200) {
+    if (baseDays > 100) {
       thirdPartyServices.push({
         name: 'CI/CD 工具服务',
-        cost: Math.ceil(avgDuration / 30) * 500,
+        cost: Math.ceil(estimatedDuration / 30) * 500,
       })
     }
 
@@ -118,36 +114,30 @@ export async function calculateNode(
     // 基础设施成本（预留）
     const infrastructureCost = 0
 
-    // 基础成本小计
-    const baseCost = laborCost + serviceCost + infrastructureCost
-
-    // 计算风险缓冲
-    const bufferAmount = Math.round(baseCost * (riskBufferPercentage / 100))
-
     // 总成本
-    const totalCost = baseCost + bufferAmount
+    const totalCost = laborCost + serviceCost + infrastructureCost
 
     // 构建成本估算结果
     const cost: AgentCostEstimate = {
+      baseDays: roundToDecimal(baseDays, 1),
+      bufferedDays,
+      bufferCoefficient,
+      roleBreakdown,
+      additionalWorkBreakdown,
       laborCost,
       serviceCost,
       infrastructureCost,
-      bufferPercentage: riskBufferPercentage,
       totalCost,
-      breakdown: {
-        development: developmentCost,
-        testing: testingCost,
-        deployment: integrationCost, // 使用集成费用作为部署费用
-        maintenance: 0, // 维护费用需要单独评估
-        thirdPartyServices,
-      },
+      thirdPartyServices,
     }
 
     console.log('[Agent] 成本计算完成:', {
+      baseDays,
+      bufferedDays,
       laborCost,
       serviceCost,
-      bufferAmount,
       totalCost,
+      rolesCount: roleBreakdown.length,
     })
 
     return {

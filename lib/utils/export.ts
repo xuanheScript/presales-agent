@@ -2,15 +2,7 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import type { Project, Requirement, FunctionModule, CostEstimate } from '@/types'
-import { DIFFICULTY_MULTIPLIERS, DEFAULT_CONFIG } from '@/constants'
-
-// 难度级别显示名称
-const DIFFICULTY_LABELS: Record<string, string> = {
-  simple: '简单',
-  medium: '中等',
-  complex: '复杂',
-  very_complex: '非常复杂',
-}
+import { DEFAULT_CONFIG } from '@/constants'
 
 interface ExportData {
   project: Project
@@ -93,13 +85,12 @@ export function generatePDFReport(data: ExportData): void {
     const tableData = functions.map((fn) => [
       fn.module_name,
       fn.function_name,
-      DIFFICULTY_LABELS[fn.difficulty_level] || fn.difficulty_level,
       `${fn.estimated_hours}h`,
     ])
 
     autoTable(doc, {
       startY: yPos,
-      head: [['Module', 'Function', 'Difficulty', 'Hours']],
+      head: [['Module', 'Function', 'Hours']],
       body: tableData,
       theme: 'grid',
       styles: { fontSize: 9 },
@@ -147,15 +138,31 @@ export function generatePDFReport(data: ExportData): void {
     // 成本明细
     if (costEstimate.breakdown) {
       const breakdown = costEstimate.breakdown
+      const costData: string[][] = []
 
-      const costData = [
-        ['Development', `CNY ${breakdown.development.toLocaleString()}`],
-        ['Testing', `CNY ${breakdown.testing.toLocaleString()}`],
-        ['Deployment', `CNY ${breakdown.deployment.toLocaleString()}`],
-        ['Maintenance', `CNY ${breakdown.maintenance.toLocaleString()}`],
-      ]
+      // 新版本：按角色分解
+      if (breakdown.roleBreakdown && breakdown.roleBreakdown.length > 0) {
+        breakdown.roleBreakdown.forEach((role) => {
+          costData.push([`${role.role} (${role.days} days)`, `CNY ${role.cost.toLocaleString()}`])
+        })
 
-      if (breakdown.thirdPartyServices?.length > 0) {
+        // 额外工作
+        if (breakdown.additionalWorkBreakdown && breakdown.additionalWorkBreakdown.length > 0) {
+          breakdown.additionalWorkBreakdown.forEach((work) => {
+            costData.push([`${work.workItem} (${work.days} days)`, `CNY ${work.cost.toLocaleString()}`])
+          })
+        }
+      } else {
+        // 旧版本：按阶段分解
+        costData.push(
+          ['Development', `CNY ${(breakdown.development || 0).toLocaleString()}`],
+          ['Testing', `CNY ${(breakdown.testing || 0).toLocaleString()}`],
+          ['Deployment', `CNY ${(breakdown.deployment || 0).toLocaleString()}`],
+          ['Maintenance', `CNY ${(breakdown.maintenance || 0).toLocaleString()}`],
+        )
+      }
+
+      if (breakdown.thirdPartyServices && breakdown.thirdPartyServices.length > 0) {
         breakdown.thirdPartyServices.forEach((service) => {
           costData.push([service.name, `CNY ${service.cost.toLocaleString()}`])
         })
@@ -246,31 +253,25 @@ export function generateExcelReport(data: ExportData): void {
   // Sheet 2: 功能模块
   if (functions.length > 0) {
     const functionsData: (string | number)[][] = [
-      ['Module', 'Function', 'Description', 'Difficulty', 'Hours', 'Adjusted Hours'],
+      ['Module', 'Function', 'Description', 'Hours'],
     ]
 
     let totalHours = 0
-    let totalAdjustedHours = 0
 
     functions.forEach((fn) => {
-      const multiplier = DIFFICULTY_MULTIPLIERS[fn.difficulty_level] || 1
-      const adjustedHours = fn.estimated_hours * multiplier
       totalHours += fn.estimated_hours
-      totalAdjustedHours += adjustedHours
 
       functionsData.push([
         fn.module_name,
         fn.function_name,
         fn.description || '',
-        DIFFICULTY_LABELS[fn.difficulty_level] || fn.difficulty_level,
         fn.estimated_hours,
-        adjustedHours,
       ])
     })
 
     functionsData.push(
       [],
-      ['Total', '', '', '', totalHours, totalAdjustedHours]
+      ['Total', '', '', totalHours]
     )
 
     const functionsSheet = XLSX.utils.aoa_to_sheet(functionsData)
@@ -278,9 +279,7 @@ export function generateExcelReport(data: ExportData): void {
       { wch: 15 },
       { wch: 20 },
       { wch: 30 },
-      { wch: 12 },
       { wch: 10 },
-      { wch: 15 },
     ]
     XLSX.utils.book_append_sheet(wb, functionsSheet, 'Functions')
   }
@@ -291,29 +290,57 @@ export function generateExcelReport(data: ExportData): void {
     const costData: (string | number)[][] = [
       ['Cost Breakdown'],
       [],
-      ['Item', 'Amount (CNY)'],
-      ['Development', breakdown.development],
-      ['Testing', breakdown.testing],
-      ['Deployment', breakdown.deployment],
-      ['Maintenance', breakdown.maintenance],
     ]
 
-    if (breakdown.thirdPartyServices?.length > 0) {
+    // 新版本：按角色分解
+    if (breakdown.roleBreakdown && breakdown.roleBreakdown.length > 0) {
+      costData.push(['Role', 'Days', 'Headcount', 'Amount (CNY)'])
+      breakdown.roleBreakdown.forEach((role) => {
+        costData.push([role.role, role.days, role.headcount, role.cost])
+      })
+
+      // 额外工作
+      if (breakdown.additionalWorkBreakdown && breakdown.additionalWorkBreakdown.length > 0) {
+        costData.push([], ['Additional Work', 'Days', '', 'Amount (CNY)'])
+        breakdown.additionalWorkBreakdown.forEach((work) => {
+          costData.push([work.workItem, work.days, '', work.cost])
+        })
+      }
+    } else {
+      // 旧版本：按阶段分解
+      costData.push(
+        ['Item', 'Amount (CNY)'],
+        ['Development', breakdown.development || 0],
+        ['Testing', breakdown.testing || 0],
+        ['Deployment', breakdown.deployment || 0],
+        ['Maintenance', breakdown.maintenance || 0],
+      )
+    }
+
+    if (breakdown.thirdPartyServices && breakdown.thirdPartyServices.length > 0) {
       costData.push([], ['Third Party Services'])
       breakdown.thirdPartyServices.forEach((service) => {
         costData.push([service.name, service.cost])
       })
     }
 
+    // 汇总信息
+    const bufferDisplay = costEstimate.buffer_coefficient
+      ? `Buffer (${costEstimate.buffer_coefficient}x)`
+      : `Risk Buffer (${costEstimate.buffer_percentage}%)`
+
     costData.push(
       [],
+      ['Summary'],
+      ['Base Days', costEstimate.base_days || '-'],
+      ['Buffered Days', costEstimate.buffered_days || '-'],
       ['Subtotal', costEstimate.labor_cost + costEstimate.service_cost + costEstimate.infrastructure_cost],
-      [`Risk Buffer (${costEstimate.buffer_percentage}%)`, costEstimate.total_cost - (costEstimate.labor_cost + costEstimate.service_cost + costEstimate.infrastructure_cost)],
+      [bufferDisplay, costEstimate.total_cost - (costEstimate.labor_cost + costEstimate.service_cost + costEstimate.infrastructure_cost)],
       ['Total', costEstimate.total_cost]
     )
 
     const costSheet = XLSX.utils.aoa_to_sheet(costData)
-    costSheet['!cols'] = [{ wch: 25 }, { wch: 20 }]
+    costSheet['!cols'] = [{ wch: 25 }, { wch: 15 }, { wch: 12 }, { wch: 20 }]
     XLSX.utils.book_append_sheet(wb, costSheet, 'Cost Details')
   }
 

@@ -19,13 +19,6 @@ import { getFunctionModules } from '@/app/actions/functions'
 import { getCostEstimate } from '@/app/actions/costs'
 import { ExportButtons } from '@/components/project/export-buttons'
 
-// 难度级别显示名称
-const DIFFICULTY_LABELS: Record<string, string> = {
-  simple: '简单',
-  medium: '中等',
-  complex: '复杂',
-  very_complex: '非常复杂',
-}
 
 interface ReportPageProps {
   params: Promise<{ id: string }>
@@ -215,7 +208,6 @@ async function ReportContent({ projectId }: { projectId: string }) {
                 <TableRow>
                   <TableHead>模块</TableHead>
                   <TableHead>功能</TableHead>
-                  <TableHead>难度</TableHead>
                   <TableHead className="text-right">工时</TableHead>
                 </TableRow>
               </TableHeader>
@@ -224,19 +216,6 @@ async function ReportContent({ projectId }: { projectId: string }) {
                   <TableRow key={fn.id}>
                     <TableCell className="font-medium">{fn.module_name}</TableCell>
                     <TableCell>{fn.function_name}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          fn.difficulty_level === 'simple'
-                            ? 'secondary'
-                            : fn.difficulty_level === 'complex' || fn.difficulty_level === 'very_complex'
-                              ? 'destructive'
-                              : 'default'
-                        }
-                      >
-                        {DIFFICULTY_LABELS[fn.difficulty_level] || fn.difficulty_level}
-                      </Badge>
-                    </TableCell>
                     <TableCell className="text-right">{fn.estimated_hours}h</TableCell>
                   </TableRow>
                 ))}
@@ -265,6 +244,30 @@ async function ReportContent({ projectId }: { projectId: string }) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* 工时概览（新版本） */}
+            {costEstimate.base_days && (
+              <div className="grid gap-4 md:grid-cols-4">
+                <div className="text-center p-4 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">基础人天</p>
+                  <p className="text-xl font-bold">{costEstimate.base_days}</p>
+                </div>
+                <div className="text-center p-4 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">含缓冲人天</p>
+                  <p className="text-xl font-bold">{costEstimate.buffered_days}</p>
+                </div>
+                <div className="text-center p-4 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">缓冲系数</p>
+                  <p className="text-xl font-bold">{costEstimate.buffer_coefficient}x</p>
+                </div>
+                <div className="text-center p-4 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">团队规模</p>
+                  <p className="text-xl font-bold">
+                    {costEstimate.breakdown?.roleBreakdown?.reduce((sum, r) => sum + r.headcount, 0) || '-'} 人
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* 成本汇总 */}
             <div className="grid gap-4 md:grid-cols-4">
               <div className="text-center p-4 bg-muted rounded-lg">
@@ -287,7 +290,7 @@ async function ReportContent({ projectId }: { projectId: string }) {
               </div>
               <div className="text-center p-4 bg-primary/10 rounded-lg">
                 <p className="text-sm text-muted-foreground">
-                  总成本（含 {costEstimate.buffer_percentage}% 缓冲）
+                  总成本（含 {costEstimate.buffer_coefficient ? `${costEstimate.buffer_coefficient}x` : `${costEstimate.buffer_percentage}%`} 缓冲）
                 </p>
                 <p className="text-2xl font-bold text-primary">
                   ¥{costEstimate.total_cost.toLocaleString()}
@@ -301,48 +304,111 @@ async function ReportContent({ projectId }: { projectId: string }) {
                 <Separator />
                 <div>
                   <p className="font-medium mb-4">成本明细</p>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>项目</TableHead>
-                        <TableHead className="text-right">金额</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      <TableRow>
-                        <TableCell>开发费用</TableCell>
-                        <TableCell className="text-right">
-                          ¥{costEstimate.breakdown.development.toLocaleString()}
-                        </TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell>测试费用</TableCell>
-                        <TableCell className="text-right">
-                          ¥{costEstimate.breakdown.testing.toLocaleString()}
-                        </TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell>部署费用</TableCell>
-                        <TableCell className="text-right">
-                          ¥{costEstimate.breakdown.deployment.toLocaleString()}
-                        </TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell>维护费用</TableCell>
-                        <TableCell className="text-right">
-                          ¥{costEstimate.breakdown.maintenance.toLocaleString()}
-                        </TableCell>
-                      </TableRow>
-                      {costEstimate.breakdown.thirdPartyServices?.map((service, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{service.name}</TableCell>
+                  {/* 新版本：按角色分解 */}
+                  {costEstimate.breakdown.roleBreakdown && costEstimate.breakdown.roleBreakdown.length > 0 ? (
+                    <>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>角色</TableHead>
+                            <TableHead className="text-right">人天</TableHead>
+                            <TableHead className="text-right">人数</TableHead>
+                            <TableHead className="text-right">成本</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {costEstimate.breakdown.roleBreakdown.map((role, index) => (
+                            <TableRow key={index}>
+                              <TableCell className="font-medium">{role.role}</TableCell>
+                              <TableCell className="text-right">{role.days}</TableCell>
+                              <TableCell className="text-right">{role.headcount}</TableCell>
+                              <TableCell className="text-right">¥{role.cost.toLocaleString()}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+
+                      {/* 额外工作 */}
+                      {costEstimate.breakdown.additionalWorkBreakdown && costEstimate.breakdown.additionalWorkBreakdown.length > 0 && (
+                        <div className="mt-4">
+                          <p className="font-medium mb-2 text-sm text-muted-foreground">额外工作</p>
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>工作项</TableHead>
+                                <TableHead className="text-right">人天</TableHead>
+                                <TableHead className="text-right">成本</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {costEstimate.breakdown.additionalWorkBreakdown.map((work, index) => (
+                                <TableRow key={index}>
+                                  <TableCell className="font-medium">{work.workItem}</TableCell>
+                                  <TableCell className="text-right">{work.days}</TableCell>
+                                  <TableCell className="text-right">¥{work.cost.toLocaleString()}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    /* 旧版本：按阶段分解 */
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>项目</TableHead>
+                          <TableHead className="text-right">金额</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell>开发费用</TableCell>
                           <TableCell className="text-right">
-                            ¥{service.cost.toLocaleString()}
+                            ¥{(costEstimate.breakdown.development || 0).toLocaleString()}
                           </TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                        <TableRow>
+                          <TableCell>测试费用</TableCell>
+                          <TableCell className="text-right">
+                            ¥{(costEstimate.breakdown.testing || 0).toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>部署费用</TableCell>
+                          <TableCell className="text-right">
+                            ¥{(costEstimate.breakdown.deployment || 0).toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>维护费用</TableCell>
+                          <TableCell className="text-right">
+                            ¥{(costEstimate.breakdown.maintenance || 0).toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  )}
+
+                  {/* 第三方服务 */}
+                  {costEstimate.breakdown.thirdPartyServices && costEstimate.breakdown.thirdPartyServices.length > 0 && (
+                    <div className="mt-4">
+                      <p className="font-medium mb-2 text-sm text-muted-foreground">第三方服务</p>
+                      <Table>
+                        <TableBody>
+                          {costEstimate.breakdown.thirdPartyServices.map((service, index) => (
+                            <TableRow key={index}>
+                              <TableCell>{service.name}</TableCell>
+                              <TableCell className="text-right">
+                                ¥{service.cost.toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
                 </div>
               </>
             )}
