@@ -12,11 +12,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Plus, Library, Search, Clock, DollarSign } from 'lucide-react'
 import { getFunctionLibraryItems, getFunctionCategories } from '@/app/actions/function-library'
+import { getEstimateReferences } from '@/app/actions/estimate-references'
 import { FUNCTION_CATEGORIES } from '@/constants'
 import { FunctionLibraryDialog } from '@/components/function-library/function-library-dialog'
 import { FunctionLibraryActions } from '@/components/function-library/function-library-actions'
+import { EstimateReferenceList } from '@/components/function-library/estimate-reference-list'
 
 interface FunctionLibraryPageProps {
   searchParams: Promise<{
@@ -45,39 +48,64 @@ export default async function FunctionLibraryPage({ searchParams }: FunctionLibr
         </FunctionLibraryDialog>
       </div>
 
-      {/* 搜索和筛选 */}
-      <Card>
-        <CardContent className="pt-6">
-          <form className="flex gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                name="search"
-                placeholder="搜索功能名称..."
-                defaultValue={params.search}
-                className="pl-10"
-              />
-            </div>
-            <select
-              name="category"
-              defaultValue={params.category || ''}
-              className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-            >
-              <option value="">全部分类</option>
-              {FUNCTION_CATEGORIES.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-            <Button type="submit">筛选</Button>
-          </form>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="standard" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="standard">标准功能库</TabsTrigger>
+          <TabsTrigger value="references">估算参考库</TabsTrigger>
+        </TabsList>
 
-      <Suspense fallback={<FunctionLibrarySkeleton />}>
-        <FunctionLibraryList category={params.category} search={params.search} />
-      </Suspense>
+        <TabsContent value="standard" className="space-y-6">
+          {/* 搜索和筛选 */}
+          <Card>
+            <CardContent className="pt-6">
+              <form className="flex gap-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    name="search"
+                    placeholder="搜索功能名称..."
+                    defaultValue={params.search}
+                    className="pl-10"
+                  />
+                </div>
+                <select
+                  name="category"
+                  defaultValue={params.category || ''}
+                  className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                >
+                  <option value="">全部分类</option>
+                  {FUNCTION_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+                <Button type="submit">筛选</Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Suspense fallback={<FunctionLibrarySkeleton />}>
+            <FunctionLibraryList category={params.category} search={params.search} />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="references">
+          <Card>
+            <CardHeader>
+              <CardTitle>估算参考库</CardTitle>
+              <CardDescription>
+                从已完成项目中验证的工时评估，用于提高 AI 估算精准度
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Suspense fallback={<FunctionLibrarySkeleton />}>
+                <EstimateReferenceContent />
+              </Suspense>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
@@ -219,6 +247,11 @@ async function FunctionLibraryList({
       ))}
     </div>
   )
+}
+
+async function EstimateReferenceContent() {
+  const references = await getEstimateReferences()
+  return <EstimateReferenceList references={references} />
 }
 
 function FunctionLibrarySkeleton() {

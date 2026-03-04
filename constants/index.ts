@@ -14,7 +14,10 @@ export const DIFFICULTY_LEVELS = {
   VERY_COMPLEX: 'very_complex',
 } as const
 
-// 难度等级对应的工时倍数
+/**
+ * @deprecated AI 评估工时时已考虑难度因素，不再需要二次加权
+ * 保留此常量仅用于向后兼容
+ */
 export const DIFFICULTY_MULTIPLIERS = {
   simple: 1.0,
   medium: 1.5,
@@ -33,7 +36,11 @@ export const TEMPLATE_TYPES = {
 // 默认配置
 export const DEFAULT_CONFIG = {
   LABOR_COST_PER_DAY: 1500, // 人天成本（元）
-  RISK_BUFFER_PERCENTAGE: 15, // 风险缓冲百分比
+  /**
+   * @deprecated AI 现在使用 bufferCoefficient (1.2-2.0x) 动态评估缓冲
+   * 保留此字段仅用于向后兼容
+   */
+  RISK_BUFFER_PERCENTAGE: 15, // 风险缓冲百分比（已废弃）
   CURRENCY: 'CNY',
   WORKING_HOURS_PER_DAY: 8,
 } as const

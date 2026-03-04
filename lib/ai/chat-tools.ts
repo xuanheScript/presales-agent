@@ -1,8 +1,7 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { DIFFICULTY_MULTIPLIERS } from '@/constants'
-import type { ParsedRequirement, DifficultyLevel } from '@/types'
+import type { ParsedRequirement } from '@/types'
 
 /**
  * 需求澄清对话工具集
@@ -448,19 +447,14 @@ export function createChatTools(context: ChatToolsContext) {
         ?? 0
       const workingHoursPerDay = 8
 
-      // 计算基础工时和加权工时（与 workflow 计算逻辑一致）
-      // 难度倍数：simple=1.0, medium=1.5, complex=2.5, very_complex=4.0
-      let baseHours = 0
-      let weightedHours = 0
+      // 计算总工时
+      let totalHours = 0
       for (const fn of functions) {
-        const hours = Number(fn.estimated_hours)
-        baseHours += hours
-        const multiplier = DIFFICULTY_MULTIPLIERS[fn.difficulty_level as DifficultyLevel] || 1
-        weightedHours += hours * multiplier
+        totalHours += Number(fn.estimated_hours)
       }
 
-      // 使用加权工时计算人天数
-      const totalDays = Math.round((weightedHours / workingHoursPerDay) * 10) / 10
+      // 计算人天数
+      const totalDays = Math.round((totalHours / workingHoursPerDay) * 10) / 10
 
       // 计算人力成本
       const laborCost = Math.round(totalDays * laborCostPerDay)
@@ -479,8 +473,7 @@ export function createChatTools(context: ChatToolsContext) {
         buffer_percentage: bufferPercentage,
         total_cost: totalCost,
         breakdown: {
-          baseHours,
-          weightedHours: Math.round(weightedHours * 10) / 10,
+          totalHours,
           totalDays,
           laborCostPerDay,
           buffer,
@@ -502,8 +495,7 @@ export function createChatTools(context: ChatToolsContext) {
         success: true,
         message: '成本已重新计算',
         data: {
-          baseHours,
-          weightedHours: Math.round(weightedHours * 10) / 10,
+          totalHours,
           totalDays,
           laborCostPerDay,
           laborCost,
@@ -687,18 +679,9 @@ export function createChatTools(context: ChatToolsContext) {
         .limit(1)
         .single()
 
-      // 计算难度分布
-      const byDifficulty: Record<DifficultyLevel, number> = {
-        simple: 0,
-        medium: 0,
-        complex: 0,
-        very_complex: 0,
-      }
-
       let totalHours = 0
       functions?.forEach(f => {
         totalHours += Number(f.estimated_hours)
-        byDifficulty[f.difficulty_level as DifficultyLevel]++
       })
 
       return {
@@ -708,7 +691,6 @@ export function createChatTools(context: ChatToolsContext) {
           totalModules: functions?.length || 0,
           totalHours,
           totalDays: Math.round((totalHours / 8) * 10) / 10,
-          byDifficulty,
           totalCost: cost?.total_cost || 0,
           laborCost: cost?.labor_cost || 0,
           bufferPercentage: cost?.buffer_percentage || 15,

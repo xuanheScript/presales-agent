@@ -45,8 +45,31 @@ CREATE TABLE IF NOT EXISTS function_modules (
   function_name TEXT NOT NULL,
   description TEXT,
   difficulty_level TEXT NOT NULL DEFAULT 'medium' CHECK (difficulty_level IN ('simple', 'medium', 'complex', 'very_complex')),
-  estimated_hours DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  estimated_hours DECIMAL(10, 2) NOT NULL DEFAULT 0,  -- 总工时（小时），各角色工时之和
+  role_estimates JSONB DEFAULT '[]',                   -- 各角色工时评估，格式: [{role, days, reason?}]
+  is_verified BOOLEAN NOT NULL DEFAULT FALSE,          -- 是否已验证为准确估算
   dependencies TEXT[],
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 4.1 项目角色表（新增）
+CREATE TABLE IF NOT EXISTS project_roles (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  role_name TEXT NOT NULL,                            -- 角色名称，如：后端开发、嵌入式工程师
+  responsibility TEXT,                                 -- 角色职责描述
+  headcount INTEGER NOT NULL DEFAULT 1,               -- 建议人数
+  total_days DECIMAL(10, 2) NOT NULL DEFAULT 0,       -- 该角色总工时（人天）
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 4.2 额外工作项表（新增）
+CREATE TABLE IF NOT EXISTS additional_work_items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  work_item TEXT NOT NULL,                            -- 工作项名称，如：技术架构设计、联调测试
+  days DECIMAL(10, 2) NOT NULL DEFAULT 0,             -- 工时（人天）
+  assigned_roles TEXT[] NOT NULL DEFAULT '{}',        -- 承担该工作的角色列表
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -59,6 +82,11 @@ CREATE TABLE IF NOT EXISTS cost_estimates (
   infrastructure_cost DECIMAL(12, 2) NOT NULL DEFAULT 0,
   buffer_percentage DECIMAL(5, 2) NOT NULL DEFAULT 15,
   total_cost DECIMAL(12, 2) NOT NULL DEFAULT 0,
+  -- 新增字段
+  base_days DECIMAL(10, 2) DEFAULT 0,                 -- 基础总人天
+  buffered_days DECIMAL(10, 2) DEFAULT 0,             -- 含缓冲的总人天
+  buffer_coefficient DECIMAL(5, 3) DEFAULT 1.0,       -- 缓冲系数（1.2-2.0）
+  -- breakdown 包含角色明细: {role_breakdown, additional_work_breakdown, third_party_services}
   breakdown JSONB NOT NULL DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -86,6 +114,28 @@ CREATE TABLE IF NOT EXISTS function_library (
   standard_hours DECIMAL(10, 2) NOT NULL,
   complexity_factors JSONB,
   reference_cost DECIMAL(12, 2),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 7.1 估算参考库表（从已验证的功能模块提取，用于 AI 工时评估的 Few-shot 参考）
+CREATE TABLE IF NOT EXISTS estimate_references (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  module_name TEXT NOT NULL,
+  function_name TEXT NOT NULL,
+  description TEXT,
+  difficulty_level TEXT NOT NULL DEFAULT 'medium'
+    CHECK (difficulty_level IN ('simple', 'medium', 'complex', 'very_complex')),
+  role_estimates JSONB NOT NULL DEFAULT '[]',           -- 角色工时: [{role, days, reason?}]
+  estimated_hours DECIMAL(10, 2) NOT NULL DEFAULT 0,    -- 总工时（小时）
+  project_type TEXT,                                     -- 项目类型（用于检索匹配）
+  category TEXT,                                         -- 功能分类
+  industry TEXT,                                         -- 行业
+  tech_stack TEXT[],                                     -- 技术栈标签
+  source_project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  source_function_module_id UUID,                        -- 来源功能模块 ID（无 FK 约束）
+  usage_count INTEGER NOT NULL DEFAULT 0,                -- 被 AI 引用次数
+  verified_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -119,6 +169,8 @@ CREATE INDEX IF NOT EXISTS idx_projects_created_by ON projects(created_by);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_requirements_project_id ON requirements(project_id);
 CREATE INDEX IF NOT EXISTS idx_function_modules_project_id ON function_modules(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_roles_project_id ON project_roles(project_id);
+CREATE INDEX IF NOT EXISTS idx_additional_work_items_project_id ON additional_work_items(project_id);
 CREATE INDEX IF NOT EXISTS idx_cost_estimates_project_id ON cost_estimates(project_id);
 CREATE INDEX IF NOT EXISTS idx_templates_type_active ON templates(template_type, is_active);
 CREATE INDEX IF NOT EXISTS idx_function_library_category ON function_library(category);
@@ -158,6 +210,8 @@ ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE requirements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE function_modules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE additional_work_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cost_estimates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE function_library ENABLE ROW LEVEL SECURITY;
@@ -218,6 +272,71 @@ CREATE POLICY "用户可以为自己的项目添加功能" ON function_modules
     EXISTS (
       SELECT 1 FROM projects
       WHERE projects.id = function_modules.project_id
+      AND projects.created_by = auth.uid()
+    )
+  );
+
+CREATE POLICY "用户可以删除自己项目的功能" ON function_modules
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = function_modules.project_id
+      AND projects.created_by = auth.uid()
+    )
+  );
+
+-- Project Roles 策略
+CREATE POLICY "用户可以查看自己项目的角色" ON project_roles
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = project_roles.project_id
+      AND projects.created_by = auth.uid()
+    )
+  );
+
+CREATE POLICY "用户可以为自己的项目添加角色" ON project_roles
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = project_roles.project_id
+      AND projects.created_by = auth.uid()
+    )
+  );
+
+CREATE POLICY "用户可以删除自己项目的角色" ON project_roles
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = project_roles.project_id
+      AND projects.created_by = auth.uid()
+    )
+  );
+
+-- Additional Work Items 策略
+CREATE POLICY "用户可以查看自己项目的额外工作" ON additional_work_items
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = additional_work_items.project_id
+      AND projects.created_by = auth.uid()
+    )
+  );
+
+CREATE POLICY "用户可以为自己的项目添加额外工作" ON additional_work_items
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = additional_work_items.project_id
+      AND projects.created_by = auth.uid()
+    )
+  );
+
+CREATE POLICY "用户可以删除自己项目的额外工作" ON additional_work_items
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = additional_work_items.project_id
       AND projects.created_by = auth.uid()
     )
   );

@@ -81,30 +81,6 @@ export function SystemConfigForm({ config }: SystemConfigFormProps) {
           </p>
         </div>
 
-        {/* 风险缓冲比例 */}
-        <div className="space-y-2">
-          <Label htmlFor="risk_buffer_percentage">风险缓冲比例</Label>
-          <div className="relative">
-            <Input
-              id="risk_buffer_percentage"
-              name="risk_buffer_percentage"
-              type="number"
-              min="0"
-              max="100"
-              step="1"
-              defaultValue={config?.default_risk_buffer_percentage || DEFAULT_CONFIG.RISK_BUFFER_PERCENTAGE}
-              className="pr-8"
-              required
-            />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-              %
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            在总成本基础上增加的风险缓冲百分比
-          </p>
-        </div>
-
         {/* 货币 */}
         <div className="space-y-2">
           <Label htmlFor="currency">货币单位</Label>

@@ -38,6 +38,13 @@ export interface ParsedRequirement {
   risks: string[]
 }
 
+// 角色工时评估
+export interface RoleEstimate {
+  role: string
+  days: number
+  reason?: string
+}
+
 // 功能相关类型
 export interface FunctionModule {
   id: string
@@ -48,6 +55,8 @@ export interface FunctionModule {
   difficulty_level: DifficultyLevel
   estimated_hours: number
   dependencies: string[] | null
+  role_estimates: RoleEstimate[] | null
+  is_verified: boolean
   created_at: string
 }
 
@@ -62,20 +71,53 @@ export interface CostEstimate {
   infrastructure_cost: number
   buffer_percentage: number
   total_cost: number
+  // 新增字段
+  base_days?: number              // 基础总人天
+  buffered_days?: number          // 含缓冲的总人天
+  buffer_coefficient?: number     // 缓冲系数（1.2-2.0）
   breakdown: CostBreakdown
   created_at: string
   updated_at: string
 }
 
+// 角色成本分解
+export interface RoleCostBreakdown {
+  role: string
+  days: number
+  cost: number
+  headcount: number
+}
+
+// 额外工作成本分解
+export interface AdditionalWorkCostBreakdown {
+  workItem: string
+  days: number
+  cost: number
+}
+
+// 第三方服务成本
+export interface ThirdPartyServiceCost {
+  name: string
+  cost: number
+}
+
 export interface CostBreakdown {
-  development: number
-  testing: number
-  deployment: number
-  maintenance: number
-  thirdPartyServices: Array<{
-    name: string
-    cost: number
-  }>
+  // 新版本：按角色分解
+  roleBreakdown?: RoleCostBreakdown[]
+  // 额外工作分解
+  additionalWorkBreakdown?: AdditionalWorkCostBreakdown[]
+  // 第三方服务
+  thirdPartyServices?: ThirdPartyServiceCost[]
+
+  // 兼容旧版本字段（已废弃，仅用于旧数据展示）
+  /** @deprecated 使用 roleBreakdown 替代 */
+  development?: number
+  /** @deprecated 使用 roleBreakdown 替代 */
+  testing?: number
+  /** @deprecated 使用 roleBreakdown 替代 */
+  deployment?: number
+  /** @deprecated 使用 roleBreakdown 替代 */
+  maintenance?: number
 }
 
 // 模板相关类型
@@ -106,6 +148,27 @@ export interface FunctionLibraryItem {
   standard_hours: number
   complexity_factors: Record<string, number> | null
   reference_cost: number | null
+  created_at: string
+  updated_at: string
+}
+
+// 估算参考库类型
+export interface EstimateReference {
+  id: string
+  module_name: string
+  function_name: string
+  description: string | null
+  difficulty_level: DifficultyLevel
+  role_estimates: RoleEstimate[]
+  estimated_hours: number
+  project_type: string | null
+  category: string | null
+  industry: string | null
+  tech_stack: string[] | null
+  source_project_id: string | null
+  source_function_module_id: string | null
+  usage_count: number
+  verified_by: string | null
   created_at: string
   updated_at: string
 }
