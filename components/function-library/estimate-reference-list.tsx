@@ -80,6 +80,7 @@ export function EstimateReferenceList({ references }: EstimateReferenceListProps
                   <TableHead className="w-[120px]">模块</TableHead>
                   <TableHead>功能名称</TableHead>
                   <TableHead className="min-w-[200px]">角色工时</TableHead>
+                  <TableHead className="w-[80px]">人天</TableHead>
                   <TableHead className="w-[80px]">引用次数</TableHead>
                   <TableHead className="w-[60px]">操作</TableHead>
                 </TableRow>
@@ -106,6 +107,9 @@ export function EstimateReferenceList({ references }: EstimateReferenceListProps
                           </Badge>
                         ))}
                       </div>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {ref.role_estimates.reduce((sum, re) => sum + re.days, 0)}人天
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1 text-sm">

@@ -2,6 +2,11 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import {
+  generateEmbedding,
+  generateEmbeddings,
+  buildEmbeddingText,
+} from '@/lib/ai/embedding'
 import type { EstimateReference } from '@/types'
 
 /**
@@ -50,48 +55,48 @@ export async function getEstimateReferences(options?: {
 }
 
 /**
- * 为 breakdownNode 检索相关参考
+ * 为 breakdownNode 检索相关参考（向量语义检索）
  *
- * 检索策略：优先按 projectType 精确匹配，不足则 fallback 到全局高频参考
+ * 检索策略：使用 embedding 向量相似度检索，失败时 fallback 到全局高频参考
  */
 export async function getReferencesForBreakdown(
-  projectType: string,
+  queryText: string,
   limit: number = 10
 ): Promise<EstimateReference[]> {
   const supabase = await createClient()
 
-  // 优先精确匹配 project_type
-  const { data, error } = await supabase
-    .from('estimate_references')
-    .select('*')
-    .eq('project_type', projectType)
-    .order('usage_count', { ascending: false })
-    .limit(limit)
+  // 尝试向量检索
+  try {
+    const queryEmbedding = await generateEmbedding(queryText)
 
-  if (!error && data && data.length >= 3) {
-    return data
+    const { data, error } = await supabase.rpc('match_estimate_references', {
+      query_embedding: JSON.stringify(queryEmbedding),
+      match_threshold: 0.3,
+      match_count: limit,
+    })
+
+    if (!error && data && data.length > 0) {
+      console.log('[RAG] 向量检索命中:', {
+        query: queryText.substring(0, 100),
+        resultCount: data.length,
+        similarities: data.map((d: EstimateReference & { similarity: number }) =>
+          d.similarity?.toFixed(3)
+        ),
+      })
+      return data
+    }
+  } catch (embeddingError) {
+    console.warn('[RAG] 向量检索失败，回退到全局高频参考:', embeddingError)
   }
 
-  // 不足 3 条时，补充全局高频参考（排除已获取的）
-  const existingIds = (data || []).map((d) => d.id)
-
+  // Fallback: 全局高频参考
   const { data: fallbackData } = await supabase
     .from('estimate_references')
     .select('*')
     .order('usage_count', { ascending: false })
     .limit(limit)
 
-  if (!fallbackData) return data || []
-
-  // 合并去重
-  const merged = [...(data || [])]
-  for (const item of fallbackData) {
-    if (!existingIds.includes(item.id) && merged.length < limit) {
-      merged.push(item)
-    }
-  }
-
-  return merged
+  return fallbackData || []
 }
 
 /**
@@ -168,6 +173,22 @@ export async function extractToReference(
     return { success: false, error: insertError.message }
   }
 
+  // 异步生成 embedding（不阻塞主流程）
+  const embeddingText = buildEmbeddingText({
+    module_name: fm.module_name,
+    function_name: fm.function_name,
+    description: fm.description,
+  })
+  generateEmbedding(embeddingText)
+    .then(async (embedding) => {
+      const supabaseForUpdate = await createClient()
+      await supabaseForUpdate
+        .from('estimate_references')
+        .update({ embedding: JSON.stringify(embedding) })
+        .eq('id', ref.id)
+    })
+    .catch((err) => console.warn('[RAG] 生成 embedding 失败:', err))
+
   revalidatePath('/function-library')
   return { success: true, id: ref.id }
 }
@@ -240,13 +261,31 @@ export async function batchExtractToReferences(
     verified_by: user.id,
   }))
 
-  const { error: insertError } = await supabase
+  const { data: insertedRefs, error: insertError } = await supabase
     .from('estimate_references')
     .insert(references)
+    .select('id, module_name, function_name, description')
 
   if (insertError) {
     console.error('批量提取到参考库失败:', insertError)
     return { success: false, error: insertError.message }
+  }
+
+  // 异步批量生成 embedding（不阻塞主流程）
+  if (insertedRefs && insertedRefs.length > 0) {
+    const texts = insertedRefs.map((ref) => buildEmbeddingText(ref))
+    generateEmbeddings(texts)
+      .then(async (embeddings) => {
+        const supabaseForUpdate = await createClient()
+        for (let i = 0; i < insertedRefs.length; i++) {
+          await supabaseForUpdate
+            .from('estimate_references')
+            .update({ embedding: JSON.stringify(embeddings[i]) })
+            .eq('id', insertedRefs[i].id)
+        }
+        console.log('[RAG] 批量 embedding 生成完成:', insertedRefs.length)
+      })
+      .catch((err) => console.warn('[RAG] 批量生成 embedding 失败:', err))
   }
 
   revalidatePath('/function-library')

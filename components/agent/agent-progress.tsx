@@ -80,7 +80,7 @@ const STEP_ORDER: Record<string, number> = {
 
 // 功能模块类型（用于计算工时）
 interface FunctionModule {
-  estimatedHours: number
+  roleEstimates: { role: string; days: number }[]
 }
 
 // 工作流结果类型（从服务端复制，避免导入服务端模块）
@@ -93,9 +93,12 @@ interface WorkflowResult {
   error: string | null
 }
 
-// 计算总工时
+// 计算总工时（人天 × 8 = 小时）
 function calculateTotalHours(functions: FunctionModule[]): number {
-  return functions.reduce((sum, fn) => sum + fn.estimatedHours, 0)
+  return functions.reduce((sum, fn) => {
+    const days = fn.roleEstimates?.reduce((s, r) => s + r.days, 0) || 0
+    return sum + days * 8
+  }, 0)
 }
 
 interface AgentProgressProps {
