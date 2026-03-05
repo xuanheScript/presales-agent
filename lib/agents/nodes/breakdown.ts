@@ -234,19 +234,26 @@ export async function breakdownNode(
   }
 
   try {
-    // 查询相关估算参考（使用 analysis.projectType 作为查询条件，不注入到 prompt 正文）
+    // 查询相关估算参考（使用 analysis 结果构造语义查询文本）
     let referenceSection = ''
     let usedReferenceIds: string[] = []
 
     try {
-      const projectType = state.analysis.projectType || ''
-      const references = await getReferencesForBreakdown(projectType, 10)
+      // 用 projectType + keyFeatures 构造语义查询，比直接用 rawRequirement 更精准
+      const queryText = [
+        state.analysis.projectType,
+        ...(state.analysis.keyFeatures || []),
+      ]
+        .filter(Boolean)
+        .join(' ')
+
+      const references = await getReferencesForBreakdown(queryText, 10)
 
       if (references.length > 0) {
         referenceSection = formatReferencesForPrompt(references)
         usedReferenceIds = references.map((r) => r.id)
         console.log('[Agent] 注入估算参考:', {
-          projectType,
+          queryText: queryText.substring(0, 100),
           referenceCount: references.length,
         })
       }

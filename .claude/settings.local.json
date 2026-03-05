@@ -29,7 +29,8 @@
       "Bash(pnpm tsc:*)",
       "Bash(rm:*)",
       "Bash(npx tsc:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "WebFetch(domain:help.aliyun.com)"
     ],
     "deny": [],
     "ask": []
