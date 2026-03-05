@@ -13,13 +13,17 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Plus, Library, Search, Clock, DollarSign } from 'lucide-react'
-import { getFunctionLibraryItems, getFunctionCategories } from '@/app/actions/function-library'
+import { Plus, Library, Search, Clock, DollarSign, GitBranch as GitBranchIcon } from 'lucide-react'
+import { getFunctionLibraryItems } from '@/app/actions/function-library'
+import { getFunctionCategories } from '@/app/actions/function-categories'
 import { getEstimateReferences } from '@/app/actions/estimate-references'
-import { FUNCTION_CATEGORIES } from '@/constants'
+import { getAllFunctionGroupsWithItems } from '@/app/actions/function-groups'
 import { FunctionLibraryDialog } from '@/components/function-library/function-library-dialog'
 import { FunctionLibraryActions } from '@/components/function-library/function-library-actions'
 import { EstimateReferenceList } from '@/components/function-library/estimate-reference-list'
+import { FunctionGroupList } from '@/components/function-library/function-group-list'
+import { GitImportDialog } from '@/components/function-library/git-import-dialog'
+import { CategoryManageDialog } from '@/components/function-library/category-manage-dialog'
 
 interface FunctionLibraryPageProps {
   searchParams: Promise<{
@@ -30,27 +34,29 @@ interface FunctionLibraryPageProps {
 
 export default async function FunctionLibraryPage({ searchParams }: FunctionLibraryPageProps) {
   const params = await searchParams
+  const categories = await getFunctionCategories()
+  const categoryNames = categories.map((c) => c.name)
+
+  // 计算每个分类的引用数量（用于分类管理 Dialog）
+  const allItems = await getFunctionLibraryItems()
+  const usageCounts: Record<string, number> = {}
+  for (const item of allItems) {
+    usageCounts[item.category] = (usageCounts[item.category] || 0) + 1
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">功能库</h2>
-          <p className="text-muted-foreground">
-            管理标准功能模块及其工时参考
-          </p>
-        </div>
-        <FunctionLibraryDialog>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            新建功能
-          </Button>
-        </FunctionLibraryDialog>
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight">功能库</h2>
+        <p className="text-muted-foreground">
+          管理标准功能模块及其工时参考
+        </p>
       </div>
 
       <Tabs defaultValue="standard" className="space-y-6">
         <TabsList>
           <TabsTrigger value="standard">标准功能库</TabsTrigger>
+          <TabsTrigger value="groups">功能组</TabsTrigger>
           <TabsTrigger value="references">估算参考库</TabsTrigger>
         </TabsList>
 
@@ -58,7 +64,7 @@ export default async function FunctionLibraryPage({ searchParams }: FunctionLibr
           {/* 搜索和筛选 */}
           <Card>
             <CardContent className="pt-6">
-              <form className="flex gap-4">
+              <form className="flex gap-4 items-center">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -74,19 +80,38 @@ export default async function FunctionLibraryPage({ searchParams }: FunctionLibr
                   className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                 >
                   <option value="">全部分类</option>
-                  {FUNCTION_CATEGORIES.map((category) => (
+                  {categoryNames.map((category) => (
                     <option key={category} value={category}>
                       {category}
                     </option>
                   ))}
                 </select>
+                <CategoryManageDialog categories={categories} usageCounts={usageCounts} />
                 <Button type="submit">筛选</Button>
+                <FunctionLibraryDialog categories={categoryNames}>
+                  <Button>
+                    <Plus className="mr-2 h-4 w-4" />
+                    新建功能
+                  </Button>
+                </FunctionLibraryDialog>
+                <GitImportDialog categories={categoryNames}>
+                  <Button variant="outline">
+                    <GitBranchIcon className="mr-2 h-4 w-4" />
+                    从 Git 导入
+                  </Button>
+                </GitImportDialog>
               </form>
             </CardContent>
           </Card>
 
           <Suspense fallback={<FunctionLibrarySkeleton />}>
             <FunctionLibraryList category={params.category} search={params.search} />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="groups" className="space-y-6">
+          <Suspense fallback={<FunctionLibrarySkeleton />}>
+            <FunctionGroupsContent />
           </Suspense>
         </TabsContent>
 
@@ -117,7 +142,11 @@ async function FunctionLibraryList({
   category?: string
   search?: string
 }) {
-  const items = await getFunctionLibraryItems({ category, search })
+  const [items, allCategories] = await Promise.all([
+    getFunctionLibraryItems({ category, search }),
+    getFunctionCategories(),
+  ])
+  const categoryNames = allCategories.map((c) => c.name)
 
   if (items.length === 0) {
     return (
@@ -236,7 +265,7 @@ async function FunctionLibraryList({
                       )}
                     </TableCell>
                     <TableCell>
-                      <FunctionLibraryActions item={item} />
+                      <FunctionLibraryActions item={item} categories={categoryNames} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -247,6 +276,14 @@ async function FunctionLibraryList({
       ))}
     </div>
   )
+}
+
+async function FunctionGroupsContent() {
+  const [groups, allFunctions] = await Promise.all([
+    getAllFunctionGroupsWithItems(),
+    getFunctionLibraryItems(),
+  ])
+  return <FunctionGroupList groups={groups} allFunctions={allFunctions} />
 }
 
 async function EstimateReferenceContent() {

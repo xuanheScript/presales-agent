@@ -8,28 +8,33 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
-import { deleteFunctionLibraryItem } from '@/app/actions/function-library'
-import { FunctionLibraryDialog } from './function-library-dialog'
-import type { FunctionLibraryItem } from '@/types'
+import { deleteFunctionGroup } from '@/app/actions/function-groups'
+import { FunctionGroupDialog } from './function-group-dialog'
+import type { FunctionGroup, FunctionLibraryItem, FunctionGroupItemDetail } from '@/types'
 import { toast } from 'sonner'
 
-interface FunctionLibraryActionsProps {
-  item: FunctionLibraryItem
-  categories?: string[]
+interface FunctionGroupActionsProps {
+  group: FunctionGroup
+  groupItems: FunctionGroupItemDetail[]
+  allFunctions: FunctionLibraryItem[]
 }
 
-export function FunctionLibraryActions({ item, categories }: FunctionLibraryActionsProps) {
+export function FunctionGroupActions({ group, groupItems, allFunctions }: FunctionGroupActionsProps) {
   const handleDelete = async () => {
-    if (!confirm('确定要删除这个功能吗？')) {
+    if (!confirm(`确定要删除功能组「${group.name}」吗？`)) {
       return
     }
 
-    const result = await deleteFunctionLibraryItem(item.id)
+    const result = await deleteFunctionGroup(group.id)
     if (result.success) {
-      toast.success('功能已删除')
+      toast.success('功能组已删除')
     } else {
       toast.error(result.error || '删除失败')
     }
+  }
+
+  if (group.is_preset) {
+    return null
   }
 
   return (
@@ -40,12 +45,17 @@ export function FunctionLibraryActions({ item, categories }: FunctionLibraryActi
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <FunctionLibraryDialog item={item} isEdit categories={categories}>
+        <FunctionGroupDialog
+          group={group}
+          groupItems={groupItems}
+          allFunctions={allFunctions}
+          isEdit
+        >
           <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
             <Pencil className="mr-2 h-4 w-4" />
             编辑
           </DropdownMenuItem>
-        </FunctionLibraryDialog>
+        </FunctionGroupDialog>
         <DropdownMenuItem
           onClick={handleDelete}
           className="text-red-600"
