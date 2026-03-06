@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useState, useRef, useEffect, type ReactNode } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -330,6 +330,12 @@ export function GitImportDialog({ children, categories = [] }: { children: React
     }
   }
 
+  const progressEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    progressEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [progressEvents])
+
   const selectedCount = functions.filter((f) => f.selected).length
   const totalHours = functions
     .filter((f) => f.selected)
@@ -344,7 +350,7 @@ export function GitImportDialog({ children, categories = [] }: { children: React
       }}
     >
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className={phase === 'preview' ? 'max-w-5xl max-h-[90vh]' : 'max-w-lg max-h-[85vh] overflow-y-auto'}>
+      <DialogContent className={phase === 'preview' ? 'max-w-5xl max-h-[90vh]' : 'max-w-[800px]'}>
         <DialogHeader>
           <DialogTitle>
             {phase === 'preview' ? '预览导入结果' : '从 Git 仓库导入功能'}
@@ -493,19 +499,20 @@ export function GitImportDialog({ children, categories = [] }: { children: React
             {phase === 'analyzing' && (
               <div className="rounded-md bg-blue-50 p-4 space-y-3">
                 {/* 当前状态 */}
-                <div className="flex items-center gap-2 text-sm font-medium text-blue-700">
-                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                  <span className="truncate">{currentMessage}</span>
+                <div className="flex items-start gap-2 text-sm font-medium text-blue-700 min-w-0">
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0 mt-0.5" />
+                  <span className="wrap-break-word min-w-0">{currentMessage}</span>
                 </div>
                 {/* 已完成的操作日志 */}
                 {progressEvents.length > 0 && (
-                  <div className="max-h-32 overflow-y-auto space-y-1">
+                  <div className="max-h-40 overflow-y-auto space-y-1">
                     {progressEvents.map((evt, i) => (
                       <div key={i} className="flex items-center gap-1.5 text-xs text-blue-600">
                         <CheckCircle2 className="h-3 w-3 shrink-0 text-blue-400" />
                         <span className="truncate">{evt.message}</span>
                       </div>
                     ))}
+                    <div ref={progressEndRef} />
                   </div>
                 )}
                 <div className="text-[10px] text-blue-500">

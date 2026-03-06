@@ -16,6 +16,63 @@ interface ImportGroupItem {
   function_names: string[]
 }
 
+async function ensureCategoriesExist(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  categories: string[]
+): Promise<{ success: boolean; error?: string }> {
+  if (categories.length === 0) {
+    return { success: true }
+  }
+
+  const { data: existingCategories, error: existingError } = await supabase
+    .from('function_categories')
+    .select('name')
+
+  if (existingError) {
+    console.error('查询现有分类失败:', existingError)
+    return { success: false, error: `查询分类失败: ${existingError.message}` }
+  }
+
+  const existingNameSet = new Set((existingCategories || []).map((item) => item.name))
+  const missingCategories = categories.filter((name) => !existingNameSet.has(name))
+
+  if (missingCategories.length === 0) {
+    return { success: true }
+  }
+
+  const { data: maxOrderData, error: maxOrderError } = await supabase
+    .from('function_categories')
+    .select('sort_order')
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .single()
+
+  if (maxOrderError && maxOrderError.code !== 'PGRST116') {
+    console.error('查询分类排序失败:', maxOrderError)
+    return { success: false, error: `查询分类排序失败: ${maxOrderError.message}` }
+  }
+
+  const baseOrder = maxOrderData?.sort_order || 0
+  const categoryRecords = missingCategories.map((name, index) => ({
+    name,
+    sort_order: baseOrder + index + 1,
+    is_preset: false,
+    created_by: userId,
+  }))
+
+  const { error: insertError } = await supabase
+    .from('function_categories')
+    .upsert(categoryRecords, { onConflict: 'name', ignoreDuplicates: true })
+
+  if (insertError) {
+    console.error('创建缺失分类失败:', insertError)
+    return { success: false, error: `创建分类失败: ${insertError.message}` }
+  }
+
+  return { success: true }
+}
+
 /**
  * 批量导入功能库项目和功能组
  *
@@ -42,8 +99,19 @@ export async function batchImportFunctions(input: {
     return { success: false, error: '没有要导入的功能' }
   }
 
+  const normalizedFunctions = input.functions.map((item) => ({
+    ...item,
+    category: item.category.trim() || '其他',
+  }))
+  const uniqueCategories = [...new Set(normalizedFunctions.map((item) => item.category))]
+
+  const categorySync = await ensureCategoriesExist(supabase, user.user.id, uniqueCategories)
+  if (!categorySync.success) {
+    return { success: false, error: categorySync.error || '同步分类失败' }
+  }
+
   // 1. 批量创建功能库项目
-  const functionRecords = input.functions.map((f) => ({
+  const functionRecords = normalizedFunctions.map((f) => ({
     function_name: f.function_name,
     category: f.category,
     description: f.description || null,

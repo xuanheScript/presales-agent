@@ -97,16 +97,16 @@ export async function POST(req: Request) {
 
         // 第一步：AI 探索仓库，通过 onStepFinish 推送实时进度
         const explorationResult = await generateText({
-              model: defaultModel,
-              tools: gitTools,
-              stopWhen: stepCountIs(maxSteps),
-              experimental_telemetry: createTelemetryConfig('git-function-exploration', {
-                url,
-                platform: toolContext.parsed.platform,
-                maxSteps,
-                prescanConfidence: confidence,
-                prescanPartial: partial,
-              }),
+          model: defaultModel,
+          tools: gitTools,
+          stopWhen: stepCountIs(maxSteps),
+          experimental_telemetry: createTelemetryConfig('git-function-exploration', {
+            url,
+            platform: toolContext.parsed.platform,
+            maxSteps,
+            prescanConfidence: confidence,
+            prescanPartial: partial,
+          }),
           onStepFinish: ({ toolCalls, text }) => {
             // 推送每一次工具调用
             if (toolCalls && toolCalls.length > 0) {
@@ -228,11 +228,7 @@ ${explorationText}
 1. **function_name**：简洁的中文功能名称，体现核心能力（如"用户注册与登录"、"商品管理"、"订单流程"）
 2. **category**：优先从上述分类中选择；若都不匹配，可新增一个最贴切的业务分类
 3. **description**：50-150字中文描述，说明该功能的主要能力、包含的子功能、业务价值
-4. **standard_hours**：根据代码复杂度评估标准开发工时（小时），参考标准：
-   - 简单功能（CRUD、基础页面）：8-24 小时
-   - 中等功能（包含业务逻辑、多页面交互）：24-80 小时
-   - 复杂功能（复杂业务流程、多系统集成）：80-200 小时
-   - 非常复杂（支付系统、数据分析平台等）：200+ 小时
+4. **standard_hours**：根据代码复杂度评估标准开发工时（小时）
 
 同时将相关功能组织成功能组：
 1. **name**：功能组名称，如"用户体系"、"交易系统"
@@ -242,7 +238,6 @@ ${explorationText}
 注意：
 - 从业务角度提取功能，不要提取技术基础设施（如代码构建、部署配置）
 - 功能粒度适中，不要太粗也不要太细
-- 工时评估要合理，考虑前后端开发、测试、联调的总工时
 - 功能组应该有实际的业务意义，将密切相关的功能归为一组
 - 确保每个功能至少属于一个功能组`,
         })
