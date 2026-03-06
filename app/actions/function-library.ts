@@ -166,26 +166,6 @@ export async function deleteFunctionLibraryItem(
 }
 
 /**
- * 获取功能分类列表
- */
-export async function getFunctionCategories(): Promise<string[]> {
-  const supabase = await createClient()
-
-  const { data, error } = await supabase
-    .from('function_library')
-    .select('category')
-
-  if (error) {
-    console.error('获取分类失败:', error)
-    return []
-  }
-
-  // 去重
-  const categories = [...new Set(data?.map((item) => item.category) || [])]
-  return categories.sort()
-}
-
-/**
  * 搜索功能库
  */
 export async function searchFunctionLibrary(

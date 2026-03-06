@@ -139,6 +139,17 @@ export type TemplateType =
   | 'effort_estimation'
   | 'cost_calculation'
 
+// 功能分类
+export interface FunctionCategory {
+  id: string
+  name: string
+  sort_order: number
+  is_preset: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 // 功能库相关类型
 export interface FunctionLibraryItem {
   id: string
@@ -169,6 +180,67 @@ export interface EstimateReference {
   source_function_module_id: string | null
   usage_count: number
   verified_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+// 功能组相关类型
+export interface FunctionGroup {
+  id: string
+  name: string
+  description: string | null
+  created_by: string | null
+  is_preset: boolean
+  item_count: number
+  total_standard_hours: number
+  created_at: string
+  updated_at: string
+}
+
+export interface FunctionGroupItemDetail {
+  id: string
+  function_library_id: string
+  sort_order: number
+  function_name: string
+  category: string
+  description: string | null
+  standard_hours: number
+  complexity_factors: Record<string, number> | null
+}
+
+export interface FunctionGroupWithItems extends FunctionGroup {
+  items: FunctionGroupItemDetail[]
+}
+
+export interface FunctionGroupInput {
+  name: string
+  description?: string
+  function_library_ids: string[]
+}
+
+// 快速估算 - 选中的功能项
+export interface QuickEstimateItem {
+  function_library_id: string
+  function_name: string
+  category: string
+  standard_hours: number
+  selected_factors: string[]
+  complexity_multiplier: number
+  adjusted_hours: number
+}
+
+// 快速估算记录
+export interface QuickEstimate {
+  id: string
+  name: string
+  description: string | null
+  selected_items: QuickEstimateItem[]
+  total_hours: number
+  total_adjusted_hours: number
+  buffer_coefficient: number
+  labor_cost_per_day: number
+  total_cost: number
+  created_by: string
   created_at: string
   updated_at: string
 }

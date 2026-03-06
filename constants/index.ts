@@ -76,20 +76,3 @@ export const TECH_STACKS = [
   'iOS',
   'Android',
 ] as const
-
-// 功能分类
-export const FUNCTION_CATEGORIES = [
-  '用户管理',
-  '权限系统',
-  '订单管理',
-  '支付系统',
-  '内容管理',
-  '数据分析',
-  '通知系统',
-  '搜索功能',
-  '文件管理',
-  '报表系统',
-  '工作流',
-  '集成接口',
-  '其他',
-] as const

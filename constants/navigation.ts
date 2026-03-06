@@ -2,6 +2,7 @@ import {
   LayoutDashboard,
   FolderKanban,
   Library,
+  Calculator,
   FileText,
   Settings,
   type LucideIcon,
@@ -37,6 +38,12 @@ export const mainNavigation: NavItem[] = [
     href: '/function-library',
     icon: Library,
     description: '功能模块库',
+  },
+  {
+    title: '快速估算',
+    href: '/quick-estimate',
+    icon: Calculator,
+    description: '从功能库选择模块快速估算',
   },
   {
     title: '模板管理',

@@ -23,7 +23,6 @@ import {
 } from '@/components/ui/select'
 import { Loader2, Save } from 'lucide-react'
 import { createFunctionLibraryItem, updateFunctionLibraryItem } from '@/app/actions/function-library'
-import { FUNCTION_CATEGORIES } from '@/constants'
 import type { FunctionLibraryItem } from '@/types'
 import { toast } from 'sonner'
 
@@ -31,6 +30,7 @@ interface FunctionLibraryDialogProps {
   children: React.ReactNode
   item?: FunctionLibraryItem
   isEdit?: boolean
+  categories?: string[]
 }
 
 interface FormState {
@@ -43,6 +43,7 @@ export function FunctionLibraryDialog({
   children,
   item,
   isEdit = false,
+  categories = [],
 }: FunctionLibraryDialogProps) {
   const [open, setOpen] = useState(false)
 
@@ -104,7 +105,7 @@ export function FunctionLibraryDialog({
                 <SelectValue placeholder="选择分类" />
               </SelectTrigger>
               <SelectContent>
-                {FUNCTION_CATEGORIES.map((category) => (
+                {categories.map((category) => (
                   <SelectItem key={category} value={category}>
                     {category}
                   </SelectItem>
