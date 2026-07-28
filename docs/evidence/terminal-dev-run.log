@@ -1,0 +1,38 @@
++(eval):1> date
+Thu Apr 30 09:17:35 CST 2026
++(eval):1> node --version
+v22.19.0
++(eval):1> pnpm --version
+8.15.8
++(eval):1> git branch --show-current
+internal
++(eval):1> git rev-parse --short HEAD
+4fc897e
++(eval):1> curl -I http://localhost:4000
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+HTTP/1.1 200 OK
+Vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding
+link: </_next/static/chunks/troilaProject_presales-agent_app_globals_cbb197cc.css>; rel=preload; as="style"
+Cache-Control: no-store, must-revalidate
+X-Powered-By: Next.js
+Content-Type: text/html; charset=utf-8
+Date: Thu, 30 Apr 2026 01:17:35 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
++(eval):1> curl -s http://localhost:4000
++(eval):1> grep -o '售前成本估算系统\|AI 驱动的智能售前成本估算助手'
++grep:1> local _cc_bin=/Users/lijie/.cursor/extensions/anthropic.claude-code-2.1.122-darwin-arm64/resources/native-binary/claude
++grep:2> [[ -x /Users/lijie/.cursor/extensions/anthropic.claude-code-2.1.122-darwin-arm64/resources/native-binary/claude ]]
++grep:3> [[ ! -x /Users/lijie/.cursor/extensions/anthropic.claude-code-2.1.122-darwin-arm64/resources/native-binary/claude ]]
++grep:4> [[ -n 5.9 ]]
++grep:5> ARGV0=ugrep ugrep -G --ignore-files --hidden -I '--exclude-dir=.git' '--exclude-dir=.svn' '--exclude-dir=.hg' '--exclude-dir=.bzr' '--exclude-dir=.jj' '--exclude-dir=.sl' -o '售前成本估算系统\|AI 驱动的智能售前成本估算助手'
++(eval):1> head
+售前成本估算系统
+售前成本估算系统
+AI 驱动的智能售前成本估算助手
+售前成本估算系统
+售前成本估算系统
+AI 驱动的智能售前成本估算助手

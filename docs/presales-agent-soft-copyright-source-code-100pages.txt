@@ -1,0 +1,5000 @@
+==================== 第 001 页开始 ====================
+文件开始 app/api/chat/route.ts
+import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from 'ai'
+import { defaultModel } from '@/lib/ai/config'
+import { createChatTools } from '@/lib/ai/chat-tools'
+import {
+  createElicitationTools,
+  buildElicitationSystemPrompt,
+  convertToParseRequirement,
+  buildRawRequirementFromCollectedInfo,
+} from '@/lib/ai/elicitation'
+import { createTelemetryConfig } from '@/lib/observability/langfuse'
+import { getProject } from '@/app/actions/projects'
+import { getLatestRequirement, updateRequirementParsedContent } from '@/app/actions/requirements'
+import { getFunctionModules } from '@/app/actions/functions'
+import { getCostEstimate } from '@/app/actions/costs'
+import { saveChatMessages } from '@/app/actions/chat-sessions'
+import {
+  getOrCreateElicitationSession,
+  getElicitationSession,
+  saveElicitationMessage,
+  advanceElicitationRound,
+  completeElicitationSession,
+} from '@/app/actions/elicitation-sessions'
+import type { ChatMode, ElicitationCollectedInfo } from '@/types'
+export const maxDuration = 120
+interface ChatRequest {
+  messages: UIMessage[]
+  projectId: string
+  sessionId?: string
+  mode?: ChatMode
+  elicitationSessionId?: string
+  userWantsToComplete?: boolean
+}
+interface ElicitationResponseMeta {
+  sessionId: string
+  currentRound: number
+  maxRounds: number
+  collectedInfo: ElicitationCollectedInfo
+  isComplete: boolean
+}
+export async function POST(req: Request) {
+  try {
+    const {
+      messages,
+      projectId,
+      sessionId,
+      mode = 'internal',
+      elicitationSessionId,
+==================== 第 001 页结束 ====================
+==================== 第 002 页开始 ====================
+      userWantsToComplete,
+    }: ChatRequest = await req.json()
+    if (!projectId) {
+      return new Response(
+        JSON.stringify({ error: '缺少项目 ID' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+    if (mode === 'elicitation') {
+      return handleElicitationMode({
+        messages,
+        projectId,
+        elicitationSessionId,
+        userWantsToComplete,
+      })
+    }
+    return handleInternalMode({
+      messages,
+      projectId,
+      sessionId,
+    })
+  } catch (error) {
+    console.error('[Chat API] 对话失败:', error)
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : '对话失败' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+}
+async function handleInternalMode({
+  messages,
+  projectId,
+  sessionId,
+}: {
+  messages: UIMessage[]
+  projectId: string
+  sessionId?: string
+}) {
+  const [project, requirement, functions, costEstimate] = await Promise.all([
+    getProject(projectId),
+    getLatestRequirement(projectId),
+    getFunctionModules(projectId),
+    getCostEstimate(projectId),
+  ])
+  if (!project) {
+    return new Response(
+      JSON.stringify({ error: '项目不存在' }),
+      { status: 404, headers: { 'Content-Type': 'application/json' } }
+==================== 第 002 页结束 ====================
+==================== 第 003 页开始 ====================
+    )
+  }
+  const requirementId = requirement?.id || ''
+  const tools = createChatTools({
+    projectId,
+    requirementId,
+  })
+  const systemPrompt = buildInternalSystemPrompt(project, requirement, functions, costEstimate)
+  const modelMessages = await convertToModelMessages(messages)
+  const result = streamText({
+    model: defaultModel,
+    system: systemPrompt,
+    messages: modelMessages,
+    tools,
+    stopWhen: stepCountIs(5),
+    experimental_telemetry: createTelemetryConfig('chat-internal', {
+      projectId,
+      sessionId: sessionId || 'none',
+    }),
+  })
+  if (sessionId) {
+    result.consumeStream()
+  }
+  return result.toUIMessageStreamResponse({
+    originalMessages: messages,
+    onFinish: async ({ messages: finalMessages }) => {
+      if (sessionId) {
+        await saveChatMessages(sessionId, finalMessages)
+      }
+    },
+  })
+}
+async function handleElicitationMode({
+  messages,
+  projectId,
+  elicitationSessionId,
+  userWantsToComplete,
+}: {
+  messages: UIMessage[]
+  projectId: string
+  elicitationSessionId?: string
+  userWantsToComplete?: boolean
+}) {
+  const project = await getProject(projectId)
+  if (!project) {
+    return new Response(
+      JSON.stringify({ error: '项目不存在' }),
+      { status: 404, headers: { 'Content-Type': 'application/json' } }
+==================== 第 003 页结束 ====================
+==================== 第 004 页开始 ====================
+    )
+  }
+  let session = elicitationSessionId
+    ? await getElicitationSession(elicitationSessionId)
+    : await getOrCreateElicitationSession(projectId)
+  if (!session) {
+    return new Response(
+      JSON.stringify({ error: '无法创建或获取引导会话' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+  if (session.status === 'completed') {
+    return new Response(
+      JSON.stringify({ error: '该引导会话已完成' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+  if (session.current_round >= session.max_rounds) {
+    await completeElicitationAndConvert(session.id, projectId)
+    session = await getElicitationSession(session.id)
+    return new Response(
+      JSON.stringify({
+        error: '已达到最大轮次，会话已自动完成',
+        elicitation: buildElicitationMeta(session!),
+      }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+  const collectedInfo = (session.collected_info || {}) as ElicitationCollectedInfo
+  if (userWantsToComplete) {
+    await completeElicitationAndConvert(session.id, projectId)
+    session = await getElicitationSession(session.id)
+    return new Response(
+      JSON.stringify({
+        message: '需求引导已完成',
+        elicitation: buildElicitationMeta(session!),
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+  const requirement = await getLatestRequirement(projectId)
+  const rawRequirement = requirement?.raw_content || undefined
+  const tools = createElicitationTools({
+    projectId,
+    elicitationSessionId: session.id,
+  })
+  const firstUserMessage = messages.find(m => m.role === 'user')
+  const userInitialInput = firstUserMessage?.parts
+==================== 第 004 页结束 ====================
+==================== 第 005 页开始 ====================
+    ?.filter(p => p.type === 'text')
+    .map(p => (p as { text: string }).text)
+    .join('') || undefined
+  const systemPrompt = buildElicitationSystemPrompt({
+    collectedInfo,
+    currentRound: session.current_round + 1,
+    maxRounds: session.max_rounds,
+    userInitialInput: typeof userInitialInput === 'string' ? userInitialInput : undefined,
+    rawRequirement: typeof rawRequirement === 'string' ? rawRequirement : undefined,
+  })
+  const modelMessages = await convertToModelMessages(messages)
+  const result = streamText({
+    model: defaultModel,
+    system: systemPrompt,
+    messages: modelMessages,
+    tools,
+    stopWhen: stepCountIs(5),
+    experimental_telemetry: createTelemetryConfig('chat-elicitation', {
+      projectId,
+      sessionId: session.id,
+      round: session.current_round + 1,
+    }),
+  })
+  result.consumeStream()
+  return result.toUIMessageStreamResponse({
+    originalMessages: messages,
+    onFinish: async ({ messages: finalMessages }) => {
+      const lastUserMessage = messages[messages.length - 1]
+      const lastAssistantMessage = finalMessages[finalMessages.length - 1]
+      if (lastUserMessage?.role === 'user') {
+        const userContent = lastUserMessage.parts
+          ?.filter(p => p.type === 'text')
+          .map(p => (p as { text: string }).text)
+          .join('') || ''
+        await saveElicitationMessage(
+          session!.id,
+          session!.current_round + 1,
+          'user',
+          userContent
+        )
+      }
+      if (lastAssistantMessage?.role === 'assistant') {
+        const content = lastAssistantMessage.parts
+          ?.filter(p => p.type === 'text')
+          .map(p => (p as { text: string }).text)
+          .join('') || ''
+        await saveElicitationMessage(
+          session!.id,
+==================== 第 005 页结束 ====================
+==================== 第 006 页开始 ====================
+          session!.current_round + 1,
+          'assistant',
+          content
+        )
+      }
+      await advanceElicitationRound(session!.id)
+    },
+    headers: {
+      'X-Elicitation-Session-Id': session.id,
+      'X-Elicitation-Round': String(session.current_round + 1),
+    },
+  })
+}
+async function completeElicitationAndConvert(sessionId: string, projectId: string) {
+  const session = await getElicitationSession(sessionId)
+  if (!session) return
+  const collectedInfo = (session.collected_info || {}) as ElicitationCollectedInfo
+  const parsedRequirement = convertToParseRequirement(collectedInfo)
+  const rawRequirement = buildRawRequirementFromCollectedInfo(collectedInfo)
+  const requirement = await getLatestRequirement(projectId)
+  if (requirement) {
+    await updateRequirementParsedContent(requirement.id, parsedRequirement, rawRequirement)
+  }
+  await completeElicitationSession(sessionId)
+}
+function buildElicitationMeta(session: NonNullable<Awaited<ReturnType<typeof getElicitationSession>>>): ElicitationResponseMeta {
+  const collectedInfo = (session.collected_info || {}) as ElicitationCollectedInfo
+  return {
+    sessionId: session.id,
+    currentRound: session.current_round,
+    maxRounds: session.max_rounds,
+    collectedInfo,
+    isComplete: session.status === 'completed',
+  }
+}
+function buildInternalSystemPrompt(
+  project: Awaited<ReturnType<typeof getProject>>,
+  requirement: Awaited<ReturnType<typeof getLatestRequirement>>,
+  functions: Awaited<ReturnType<typeof getFunctionModules>>,
+  costEstimate: Awaited<ReturnType<typeof getCostEstimate>>
+): string {
+  let contextInfo = `# 当前项目信息
+**项目名称**：${project?.name || '未命名'}
+**项目描述**：${project?.description || '无'}
+**行业**：${project?.industry || '未指定'}
+**状态**：${project?.status || 'draft'}
+`
+  if (requirement) {
+==================== 第 006 页结束 ====================
+==================== 第 007 页开始 ====================
+    contextInfo += `
+## 需求内容
+${requirement.raw_content || '无'}
+`
+    if (requirement.parsed_content) {
+      const parsed = requirement.parsed_content
+      contextInfo += `
+## AI 分析结果
+- **项目类型**：${parsed.projectType}
+- **业务目标**：${parsed.businessGoals.join('、') || '无'}
+- **核心功能**：${parsed.keyFeatures.join('、') || '无'}
+- **技术栈**：${parsed.techStack.join('、') || '无'}
+- **潜在风险**：${parsed.risks.join('、') || '无'}
+`
+    }
+  }
+  if (functions && functions.length > 0) {
+    const totalHours = functions.reduce((sum, f) => sum + f.estimated_hours, 0)
+    contextInfo += `
+## 功能模块（共 ${functions.length} 个，总工时 ${totalHours} 小时）
+${functions.slice(0, 10).map(f => `- [ID:${f.id}] ${f.module_name} / ${f.function_name}：${f.estimated_hours}小时（${f.difficulty_level}）`).join('\n')}
+${functions.length > 10 ? `\n... 还有 ${functions.length - 10} 个功能` : ''}
+`
+  }
+  if (costEstimate) {
+    contextInfo += `
+## 成本估算
+- **人力成本**：¥${costEstimate.labor_cost.toLocaleString()}
+- **服务成本**：¥${costEstimate.service_cost.toLocaleString()}
+- **基础设施成本**：¥${costEstimate.infrastructure_cost.toLocaleString()}
+- **风险缓冲**：${costEstimate.buffer_percentage}%
+- **总成本**：¥${costEstimate.total_cost.toLocaleString()}
+`
+  }
+  return `你是一位资深的售前顾问和项目经理。你正在与客户进行需求沟通对话，帮助他们完善项目需求。
+${contextInfo}
+## 你的职责
+1. **需求完善**：主动发现需求中不清晰或遗漏的部分，提出针对性问题
+2. **方案建议**：基于你的经验，给出技术方案和架构建议
+3. **风险提示**：识别潜在风险，给出规避建议
+4. **成本解释**：解释成本构成，回答关于报价的疑问
+5. **信息保存**：当用户确认了新的需求细节、功能点或修改时，使用工具将信息保存到数据库
+## 可用工具
+你有以下工具可以使用来保存和查询数据：
+### 需求管理
+- updateRequirement: 更新需求内容
+- appendRequirement: 追加需求内容（不覆盖原有）
+- updateParsedRequirement: 更新需求分析结果（项目类型、业务目标、技术栈等）
+==================== 第 007 页结束 ====================
+==================== 第 008 页开始 ====================
+### 功能模块
+- addFunctionModule: 添加单个功能模块
+- addFunctionModulesBatch: 批量添加功能模块
+- updateFunctionHours: 更新功能工时
+- updateFunctionDifficulty: 更新功能难度
+- deleteFunctionModule: 删除功能模块
+- addFromLibrary: 从功能库添加标准功能
+### 成本估算
+- updateCostParameters: 更新成本参数（风险缓冲、服务成本等）
+- recalculateCost: 重新计算总成本
+### 项目信息
+- updateProjectDescription: 更新项目描述
+- updateProjectIndustry: 更新项目行业
+### 查询工具
+- getFunctionModules: 获取功能模块列表
+- getCostSummary: 获取成本汇总
+- searchFunctionLibrary: 搜索功能库
+- getProjectSummary: 获取项目汇总
+- getSystemConfig: 获取系统成本配置（人天成本、风险缓冲比例等），这是成本估算的核心数据源
+## 工具使用原则
+1. **获得确认后再保存**：在保存信息前，确保用户已明确确认
+2. **成本计算前获取配置**：在进行成本估算或向用户解释成本时，先调用 getSystemConfig 获取最新的人天成本和风险缓冲比例配置
+3. **及时更新成本**：添加或修改功能后，调用 recalculateCost 更新成本
+4. **主动查询**：需要了解当前状态时，使用查询工具获取最新数据
+5. **批量操作**：多个功能一起添加时，使用 addFunctionModulesBatch
+## 对话风格
+- 专业但友好，用通俗语言解释技术概念
+- 主动提问，引导客户思考未考虑到的细节
+- 给出建议时要有理有据
+- 回答简洁，避免过长
+- 保存信息后，简要告知用户已保存的内容
+## 需要主动询问的常见问题
+如果信息不足，你可以询问：
+- 用户规模和并发量要求
+- 数据安全和合规要求
+- 与现有系统的集成需求
+- 移动端还是 Web 端优先
+- 上线时间要求
+- 预算范围
+请开始对话，帮助客户完善需求。当客户确认了新的信息时，记得使用工具保存。`
+}
+文件结束 app/api/chat/route.ts
+文件开始 app/api/agent/stream/route.ts
+import { createClient } from '@/lib/supabase/server'
+import { streamPresalesWorkflow } from '@/lib/agents/graph'
+import { getRequirement, updateRequirementAnalysis } from '@/app/actions/requirements'
+import { getSystemConfig } from '@/app/actions/settings'
+import { DEFAULT_CONFIG } from '@/constants'
+==================== 第 008 页结束 ====================
+==================== 第 009 页开始 ====================
+import type { ParsedRequirement } from '@/types'
+import type { WorkflowSystemConfig } from '@/lib/agents/state'
+export const maxDuration = 300
+interface RunRequest {
+  projectId: string
+  requirementId: string
+}
+export async function POST(req: Request) {
+  try {
+    const { projectId, requirementId }: RunRequest = await req.json()
+    if (!projectId || !requirementId) {
+      return new Response(
+        JSON.stringify({ error: '缺少必要参数' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+    const requirement = await getRequirement(requirementId)
+    if (!requirement) {
+      return new Response(
+        JSON.stringify({ error: '需求不存在或无权限访问' }),
+        { status: 404, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+    if (!requirement.raw_content || requirement.raw_content.trim() === '') {
+      return new Response(
+        JSON.stringify({ error: '需求内容为空' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+    const supabase = await createClient()
+    await supabase
+      .from('projects')
+      .update({ status: 'analyzing' })
+      .eq('id', projectId)
+    const dbConfig = await getSystemConfig()
+    const systemConfig: WorkflowSystemConfig = {
+      laborCostPerDay: dbConfig?.default_labor_cost_per_day || DEFAULT_CONFIG.LABOR_COST_PER_DAY,
+      riskBufferPercentage: dbConfig?.default_risk_buffer_percentage || DEFAULT_CONFIG.RISK_BUFFER_PERCENTAGE,
+      workingHoursPerDay: DEFAULT_CONFIG.WORKING_HOURS_PER_DAY,
+    }
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        const sendEvent = (event: string, data: unknown) => {
+          controller.enqueue(
+            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          )
+        }
+==================== 第 009 页结束 ====================
+==================== 第 010 页开始 ====================
+        try {
+          let lastResult: {
+            analysis?: unknown
+            functions?: unknown[]
+            identifiedRoles?: unknown[]
+            additionalWork?: unknown[]
+            estimation?: unknown
+            cost?: unknown
+          } = {}
+          for await (const update of streamPresalesWorkflow(
+            projectId,
+            requirementId,
+            requirement.raw_content,
+            '',
+            systemConfig
+          )) {
+            console.log('[Stream] 步骤更新:', update.step)
+            sendEvent('progress', {
+              step: update.step,
+              isComplete: update.state.isComplete,
+              error: update.state.error,
+            })
+            if (update.state.analysis) lastResult.analysis = update.state.analysis
+            if (update.state.functions) lastResult.functions = update.state.functions
+            if (update.state.identifiedRoles) lastResult.identifiedRoles = update.state.identifiedRoles
+            if (update.state.additionalWork) lastResult.additionalWork = update.state.additionalWork
+            if (update.state.estimation) lastResult.estimation = update.state.estimation
+            if (update.state.cost) lastResult.cost = update.state.cost
+            if (update.state.error) {
+              sendEvent('error', { error: update.state.error })
+              await supabase
+                .from('projects')
+                .update({ status: 'draft' })
+                .eq('id', projectId)
+              controller.close()
+              return
+            }
+          }
+          if (lastResult.analysis) {
+            const analysis = lastResult.analysis as {
+              projectType?: string
+              businessGoals?: string[]
+              keyFeatures?: string[]
+              techStack?: string[]
+              nonFunctionalRequirements?: {
+                performance?: string
+                security?: string
+                scalability?: string
+==================== 第 010 页结束 ====================
+==================== 第 011 页开始 ====================
+              }
+              risks?: string[]
+            }
+            const parsedContent: ParsedRequirement = {
+              projectType: analysis.projectType || '未知类型',
+              businessGoals: analysis.businessGoals || [],
+              keyFeatures: analysis.keyFeatures || [],
+              techStack: analysis.techStack || [],
+              nonFunctionalRequirements: analysis.nonFunctionalRequirements || {},
+              risks: analysis.risks || [],
+            }
+            await updateRequirementAnalysis(requirementId, parsedContent)
+          }
+          if (lastResult.functions && (lastResult.functions as unknown[]).length > 0) {
+            await supabase
+              .from('function_modules')
+              .delete()
+              .eq('project_id', projectId)
+            const functionModules = (lastResult.functions as Array<{
+              moduleName: string
+              functionName: string
+              description: string
+              difficultyLevel: string
+              roleEstimates: Array<{ role: string; days: number; reason?: string }>
+              dependencies?: string[]
+            }>).map((fn) => ({
+              project_id: projectId,
+              module_name: fn.moduleName,
+              function_name: fn.functionName,
+              description: fn.description,
+              difficulty_level: fn.difficultyLevel,
+              estimated_hours: fn.roleEstimates.reduce((sum, r) => sum + r.days * 8, 0),
+              dependencies: fn.dependencies || null,
+              role_estimates: fn.roleEstimates,
+            }))
+            await supabase.from('function_modules').insert(functionModules)
+          }
+          if (lastResult.identifiedRoles && (lastResult.identifiedRoles as unknown[]).length > 0) {
+            await supabase
+              .from('project_roles')
+              .delete()
+              .eq('project_id', projectId)
+            const estimation = lastResult.estimation as {
+              roleSummary?: Array<{ role: string; totalDays: number }>
+            } | undefined
+            const roleSummaryMap = new Map(
+              estimation?.roleSummary?.map((r) => [r.role, r.totalDays]) || []
+            )
+==================== 第 011 页结束 ====================
+==================== 第 012 页开始 ====================
+            const projectRoles = (lastResult.identifiedRoles as Array<{
+              role: string
+              responsibility: string
+              headcount: number
+            }>).map((role) => ({
+              project_id: projectId,
+              role_name: role.role,
+              responsibility: role.responsibility,
+              headcount: role.headcount,
+              total_days: roleSummaryMap.get(role.role) || 0,
+            }))
+            await supabase.from('project_roles').insert(projectRoles)
+          }
+          if (lastResult.additionalWork && (lastResult.additionalWork as unknown[]).length > 0) {
+            await supabase
+              .from('additional_work_items')
+              .delete()
+              .eq('project_id', projectId)
+            const additionalWorkItems = (lastResult.additionalWork as Array<{
+              workItem: string
+              days: number
+              assignedRoles: string[]
+            }>).map((work) => ({
+              project_id: projectId,
+              work_item: work.workItem,
+              days: work.days,
+              assigned_roles: work.assignedRoles,
+            }))
+            await supabase.from('additional_work_items').insert(additionalWorkItems)
+          }
+          if (lastResult.cost) {
+            const cost = lastResult.cost as {
+              laborCost: number
+              serviceCost: number
+              infrastructureCost: number
+              bufferCoefficient: number
+              totalCost: number
+              baseDays: number
+              bufferedDays: number
+              roleBreakdown?: unknown
+              additionalWorkBreakdown?: unknown
+              thirdPartyServices?: unknown
+            }
+            await supabase
+              .from('cost_estimates')
+              .delete()
+              .eq('project_id', projectId)
+            await supabase.from('cost_estimates').insert({
+==================== 第 012 页结束 ====================
+==================== 第 013 页开始 ====================
+              project_id: projectId,
+              labor_cost: cost.laborCost,
+              service_cost: cost.serviceCost,
+              infrastructure_cost: cost.infrastructureCost,
+              buffer_percentage: (cost.bufferCoefficient - 1) * 100,
+              total_cost: cost.totalCost,
+              base_days: cost.baseDays,
+              buffered_days: cost.bufferedDays,
+              buffer_coefficient: cost.bufferCoefficient,
+              breakdown: {
+                roleBreakdown: cost.roleBreakdown,
+                additionalWorkBreakdown: cost.additionalWorkBreakdown,
+                thirdPartyServices: cost.thirdPartyServices,
+              },
+            })
+          }
+          await supabase
+            .from('projects')
+            .update({ status: 'completed' })
+            .eq('id', projectId)
+          sendEvent('complete', {
+            success: true,
+            data: {
+              analysis: lastResult.analysis,
+              functions: lastResult.functions,
+              estimation: lastResult.estimation,
+              cost: lastResult.cost,
+            },
+          })
+          controller.close()
+        } catch (error) {
+          console.error('[Stream] 工作流执行失败:', error)
+          sendEvent('error', {
+            error: error instanceof Error ? error.message : '工作流执行失败',
+          })
+          await supabase
+            .from('projects')
+            .update({ status: 'draft' })
+            .eq('id', projectId)
+          controller.close()
+        }
+      },
+    })
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+==================== 第 013 页结束 ====================
+==================== 第 014 页开始 ====================
+      },
+    })
+  } catch (error) {
+    console.error('[API] Agent 流式执行失败:', error)
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : '服务器内部错误' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+}
+文件结束 app/api/agent/stream/route.ts
+文件开始 app/api/agent/run/route.ts
+import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { runPresalesWorkflow } from '@/lib/agents/graph'
+import { getRequirement, updateRequirementAnalysis } from '@/app/actions/requirements'
+import { getSystemConfig } from '@/app/actions/settings'
+import { DEFAULT_CONFIG } from '@/constants'
+import type { ParsedRequirement } from '@/types'
+import type { WorkflowSystemConfig } from '@/lib/agents/state'
+export const maxDuration = 300
+interface RunRequest {
+  projectId: string
+  requirementId: string
+}
+export async function POST(req: Request) {
+  try {
+    const { projectId, requirementId }: RunRequest = await req.json()
+    if (!projectId || !requirementId) {
+      return NextResponse.json(
+        { error: '缺少必要参数' },
+        { status: 400 }
+      )
+    }
+    const requirement = await getRequirement(requirementId)
+    if (!requirement) {
+      return NextResponse.json(
+        { error: '需求不存在或无权限访问' },
+        { status: 404 }
+      )
+    }
+    if (!requirement.raw_content || requirement.raw_content.trim() === '') {
+      return NextResponse.json(
+        { error: '需求内容为空' },
+        { status: 400 }
+      )
+    }
+    const supabase = await createClient()
+==================== 第 014 页结束 ====================
+==================== 第 015 页开始 ====================
+    const { data: project } = await supabase
+      .from('projects')
+      .select('description')
+      .eq('id', projectId)
+      .single()
+    const dbConfig = await getSystemConfig()
+    const systemConfig: WorkflowSystemConfig = {
+      laborCostPerDay: dbConfig?.default_labor_cost_per_day || DEFAULT_CONFIG.LABOR_COST_PER_DAY,
+      riskBufferPercentage: dbConfig?.default_risk_buffer_percentage || DEFAULT_CONFIG.RISK_BUFFER_PERCENTAGE,
+      workingHoursPerDay: DEFAULT_CONFIG.WORKING_HOURS_PER_DAY,
+    }
+    await supabase
+      .from('projects')
+      .update({ status: 'analyzing' })
+      .eq('id', projectId)
+    const result = await runPresalesWorkflow(
+      projectId,
+      requirementId,
+      requirement.raw_content,
+      project?.description || '',
+      systemConfig
+    )
+    if (!result.success || result.error) {
+      await supabase
+        .from('projects')
+        .update({ status: 'draft' })
+        .eq('id', projectId)
+      return NextResponse.json(
+        { error: result.error || '工作流执行失败' },
+        { status: 500 }
+      )
+    }
+    if (result.analysis) {
+      const parsedContent: ParsedRequirement = {
+        projectType: result.analysis.projectType,
+        businessGoals: result.analysis.businessGoals,
+        keyFeatures: result.analysis.keyFeatures,
+        techStack: result.analysis.techStack,
+        nonFunctionalRequirements: result.analysis.nonFunctionalRequirements,
+        risks: result.analysis.risks,
+      }
+      await updateRequirementAnalysis(requirementId, parsedContent)
+    }
+    if (result.functions && result.functions.length > 0) {
+      await supabase
+        .from('function_modules')
+        .delete()
+        .eq('project_id', projectId)
+==================== 第 015 页结束 ====================
+==================== 第 016 页开始 ====================
+      const functionModules = result.functions.map((fn) => ({
+        project_id: projectId,
+        module_name: fn.moduleName,
+        function_name: fn.functionName,
+        description: fn.description,
+        difficulty_level: fn.difficultyLevel,
+        estimated_hours: fn.roleEstimates.reduce((sum, r) => sum + r.days * 8, 0),
+        dependencies: fn.dependencies || null,
+        role_estimates: fn.roleEstimates,
+      }))
+      await supabase.from('function_modules').insert(functionModules)
+    }
+    if (result.identifiedRoles && result.identifiedRoles.length > 0) {
+      await supabase
+        .from('project_roles')
+        .delete()
+        .eq('project_id', projectId)
+      const roleSummaryMap = new Map(
+        result.estimation?.roleSummary?.map((r) => [r.role, r.totalDays]) || []
+      )
+      const projectRoles = result.identifiedRoles.map((role) => ({
+        project_id: projectId,
+        role_name: role.role,
+        responsibility: role.responsibility,
+        headcount: role.headcount,
+        total_days: roleSummaryMap.get(role.role) || 0,
+      }))
+      await supabase.from('project_roles').insert(projectRoles)
+    }
+    if (result.additionalWork && result.additionalWork.length > 0) {
+      await supabase
+        .from('additional_work_items')
+        .delete()
+        .eq('project_id', projectId)
+      const additionalWorkItems = result.additionalWork.map((work) => ({
+        project_id: projectId,
+        work_item: work.workItem,
+        days: work.days,
+        assigned_roles: work.assignedRoles,
+      }))
+      await supabase.from('additional_work_items').insert(additionalWorkItems)
+    }
+    if (result.cost) {
+      await supabase
+        .from('cost_estimates')
+        .delete()
+        .eq('project_id', projectId)
+      await supabase.from('cost_estimates').insert({
+==================== 第 016 页结束 ====================
+==================== 第 017 页开始 ====================
+        project_id: projectId,
+        labor_cost: result.cost.laborCost,
+        service_cost: result.cost.serviceCost,
+        infrastructure_cost: result.cost.infrastructureCost,
+        buffer_percentage: (result.cost.bufferCoefficient - 1) * 100,
+        total_cost: result.cost.totalCost,
+        base_days: result.cost.baseDays,
+        buffered_days: result.cost.bufferedDays,
+        buffer_coefficient: result.cost.bufferCoefficient,
+        breakdown: {
+          role_breakdown: result.cost.roleBreakdown,
+          additional_work_breakdown: result.cost.additionalWorkBreakdown,
+          third_party_services: result.cost.thirdPartyServices,
+        },
+      })
+    }
+    await supabase
+      .from('projects')
+      .update({ status: 'completed' })
+      .eq('id', projectId)
+    return NextResponse.json({
+      success: true,
+      data: result,
+    })
+  } catch (error) {
+    console.error('[API] Agent 执行失败:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : '服务器内部错误' },
+      { status: 500 }
+    )
+  }
+}
+文件结束 app/api/agent/run/route.ts
+文件开始 app/actions/requirements.ts
+'use server'
+import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
+import type { Requirement, ParsedRequirement, RequirementType } from '@/types'
+export interface RequirementActionResult {
+  error?: string
+  success?: boolean
+  data?: Requirement
+}
+export async function getRequirements(projectId: string): Promise<Requirement[]> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return []
+==================== 第 017 页结束 ====================
+==================== 第 018 页开始 ====================
+  }
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id')
+    .eq('id', projectId)
+    .eq('created_by', user.id)
+    .single()
+  if (!project) {
+    return []
+  }
+  const { data, error } = await supabase
+    .from('requirements')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false })
+  if (error) {
+    console.error('获取需求列表失败:', error)
+    return []
+  }
+  return data || []
+}
+export async function getRequirement(id: string): Promise<Requirement | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return null
+  }
+  const { data, error } = await supabase
+    .from('requirements')
+    .select(`
+      *,
+      projects!inner(created_by)
+    `)
+    .eq('id', id)
+    .eq('projects.created_by', user.id)
+    .single()
+  if (error) {
+    console.error('获取需求详情失败:', error)
+    return null
+  }
+  return data
+}
+export async function createRequirement(
+  projectId: string,
+  rawContent: string,
+  requirementType: RequirementType = 'text',
+  fileUrl?: string
+): Promise<RequirementActionResult> {
+==================== 第 018 页结束 ====================
+==================== 第 019 页开始 ====================
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: '请先登录' }
+  }
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id')
+    .eq('id', projectId)
+    .eq('created_by', user.id)
+    .single()
+  if (!project) {
+    return { error: '项目不存在或无权限' }
+  }
+  if (!rawContent || rawContent.trim() === '') {
+    return { error: '请输入需求内容' }
+  }
+  const { data, error } = await supabase
+    .from('requirements')
+    .insert({
+      project_id: projectId,
+      raw_content: rawContent.trim(),
+      requirement_type: requirementType,
+      file_url: fileUrl || null,
+    })
+    .select()
+    .single()
+  if (error) {
+    console.error('创建需求失败:', error)
+    return { error: '创建需求失败，请重试' }
+  }
+  revalidatePath(`/projects/${projectId}`)
+  return { success: true, data }
+}
+export async function updateRequirement(
+  id: string,
+  rawContent: string
+): Promise<RequirementActionResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: '请先登录' }
+  }
+  const { data: requirement, error: fetchError } = await supabase
+    .from('requirements')
+    .select(`
+      project_id,
+      projects!inner(created_by)
+==================== 第 019 页结束 ====================
+==================== 第 020 页开始 ====================
+    `)
+    .eq('id', id)
+    .eq('projects.created_by', user.id)
+    .maybeSingle()
+  if (fetchError) {
+    console.error('查询需求失败:', fetchError)
+    return { error: '查询需求失败，请重试' }
+  }
+  if (!requirement) {
+    return { error: '需求不存在或无权限' }
+  }
+  const { data, error } = await supabase
+    .from('requirements')
+    .update({
+      raw_content: rawContent.trim(),
+    })
+    .eq('id', id)
+    .select()
+    .maybeSingle()
+  if (error) {
+    console.error('更新需求失败:', error)
+    return { error: '更新需求失败，请重试' }
+  }
+  if (!data) {
+    console.error('更新需求失败: 未找到匹配的记录，可能是 RLS 策略阻止了更新')
+    return { error: '更新需求失败，请检查权限' }
+  }
+  revalidatePath(`/projects/${requirement.project_id}`)
+  return { success: true, data }
+}
+export async function updateRequirementAnalysis(
+  id: string,
+  parsedContent: ParsedRequirement
+): Promise<RequirementActionResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: '请先登录' }
+  }
+  const { data: requirement, error: fetchError } = await supabase
+    .from('requirements')
+    .select(`
+      project_id,
+      projects!inner(created_by)
+    `)
+    .eq('id', id)
+    .eq('projects.created_by', user.id)
+    .maybeSingle()
+==================== 第 020 页结束 ====================
+==================== 第 021 页开始 ====================
+  if (fetchError) {
+    console.error('查询需求失败:', fetchError)
+    return { error: '查询需求失败，请重试' }
+  }
+  if (!requirement) {
+    return { error: '需求不存在或无权限' }
+  }
+  const { data, error } = await supabase
+    .from('requirements')
+    .update({
+      parsed_content: parsedContent,
+    })
+    .eq('id', id)
+    .select()
+    .maybeSingle()
+  if (error) {
+    console.error('更新需求分析结果失败:', error)
+    return { error: '更新需求分析结果失败，请重试' }
+  }
+  if (!data) {
+    console.error('更新需求分析结果失败: 未找到匹配的记录，可能是 RLS 策略阻止了更新')
+    return { error: '更新需求分析结果失败，请检查权限' }
+  }
+  revalidatePath(`/projects/${requirement.project_id}`)
+  return { success: true, data }
+}
+export async function deleteRequirement(id: string): Promise<RequirementActionResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: '请先登录' }
+  }
+  const { data: requirement, error: fetchError } = await supabase
+    .from('requirements')
+    .select(`
+      project_id,
+      projects!inner(created_by)
+    `)
+    .eq('id', id)
+    .eq('projects.created_by', user.id)
+    .maybeSingle()
+  if (fetchError) {
+    console.error('查询需求失败:', fetchError)
+    return { error: '查询需求失败，请重试' }
+  }
+  if (!requirement) {
+    return { error: '需求不存在或无权限' }
+  }
+==================== 第 021 页结束 ====================
+==================== 第 022 页开始 ====================
+  const { error } = await supabase
+    .from('requirements')
+    .delete()
+    .eq('id', id)
+  if (error) {
+    console.error('删除需求失败:', error)
+    return { error: '删除需求失败，请重试' }
+  }
+  revalidatePath(`/projects/${requirement.project_id}`)
+  return { success: true }
+}
+export async function updateRequirementParsedContent(
+  id: string,
+  parsedContent: ParsedRequirement,
+  rawContent?: string
+): Promise<RequirementActionResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: '请先登录' }
+  }
+  const { data: requirement, error: fetchError } = await supabase
+    .from('requirements')
+    .select(`
+      project_id,
+      projects!inner(created_by)
+    `)
+    .eq('id', id)
+    .eq('projects.created_by', user.id)
+    .maybeSingle()
+  if (fetchError) {
+    console.error('查询需求失败:', fetchError)
+    return { error: '查询需求失败，请重试' }
+  }
+  if (!requirement) {
+    return { error: '需求不存在或无权限' }
+  }
+  const updateData: { parsed_content: ParsedRequirement; raw_content?: string } = {
+    parsed_content: parsedContent,
+  }
+  if (rawContent) {
+    updateData.raw_content = rawContent
+  }
+  const { data, error } = await supabase
+    .from('requirements')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+==================== 第 022 页结束 ====================
+==================== 第 023 页开始 ====================
+    .maybeSingle()
+  if (error) {
+    console.error('更新需求解析结果失败:', error)
+    return { error: '更新需求解析结果失败，请重试' }
+  }
+  if (!data) {
+    console.error('更新需求解析结果失败: 未找到匹配的记录')
+    return { error: '更新需求解析结果失败，请检查权限' }
+  }
+  revalidatePath(`/projects/${requirement.project_id}`)
+  return { success: true, data }
+}
+export async function getLatestRequirement(projectId: string): Promise<Requirement | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return null
+  }
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id')
+    .eq('id', projectId)
+    .eq('created_by', user.id)
+    .single()
+  if (!project) {
+    return null
+  }
+  const { data, error } = await supabase
+    .from('requirements')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
+  if (error) {
+    return null
+  }
+  return data
+}
+文件结束 app/actions/requirements.ts
+文件开始 app/actions/estimate-references.ts
+'use server'
+import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
+import {
+  generateEmbedding,
+  generateEmbeddings,
+  buildEmbeddingText,
+==================== 第 023 页结束 ====================
+==================== 第 024 页开始 ====================
+} from '@/lib/ai/embedding'
+import type { EstimateReference } from '@/types'
+export async function getEstimateReferences(options?: {
+  projectType?: string
+  category?: string
+  search?: string
+  limit?: number
+}): Promise<EstimateReference[]> {
+  const supabase = await createClient()
+  let query = supabase
+    .from('estimate_references')
+    .select('*')
+    .order('usage_count', { ascending: false })
+    .order('created_at', { ascending: false })
+  if (options?.projectType) {
+    query = query.eq('project_type', options.projectType)
+  }
+  if (options?.category) {
+    query = query.eq('category', options.category)
+  }
+  if (options?.search) {
+    query = query.or(
+      `function_name.ilike.%${options.search}%,module_name.ilike.%${options.search}%,description.ilike.%${options.search}%`
+    )
+  }
+  if (options?.limit) {
+    query = query.limit(options.limit)
+  }
+  const { data, error } = await query
+  if (error) {
+    console.error('获取估算参考失败:', error)
+    return []
+  }
+  return data || []
+}
+export async function getReferencesForBreakdown(
+  queryText: string,
+  limit: number = 10
+): Promise<EstimateReference[]> {
+  const supabase = await createClient()
+  try {
+    const queryEmbedding = await generateEmbedding(queryText)
+    const { data, error } = await supabase.rpc('match_estimate_references', {
+      query_embedding: JSON.stringify(queryEmbedding),
+      match_threshold: 0.3,
+      match_count: limit,
+    })
+    if (!error && data && data.length > 0) {
+==================== 第 024 页结束 ====================
+==================== 第 025 页开始 ====================
+      console.log('[RAG] 向量检索命中:', {
+        query: queryText.substring(0, 100),
+        resultCount: data.length,
+        similarities: data.map((d: EstimateReference & { similarity: number }) =>
+          d.similarity?.toFixed(3)
+        ),
+      })
+      return data
+    }
+  } catch (embeddingError) {
+    console.warn('[RAG] 向量检索失败，回退到全局高频参考:', embeddingError)
+  }
+  const { data: fallbackData } = await supabase
+    .from('estimate_references')
+    .select('*')
+    .order('usage_count', { ascending: false })
+    .limit(limit)
+  return fallbackData || []
+}
+export async function extractToReference(
+  functionModuleId: string,
+  metadata: {
+    projectType?: string
+    category?: string
+    industry?: string
+    techStack?: string[]
+  }
+): Promise<{ success: boolean; error?: string; id?: string }> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return { success: false, error: '请先登录' }
+  }
+  const { data: fm, error: fmError } = await supabase
+    .from('function_modules')
+    .select('*, projects!inner(id, created_by)')
+    .eq('id', functionModuleId)
+    .single()
+  if (fmError || !fm) {
+    return { success: false, error: '功能模块不存在' }
+  }
+  if (fm.projects.created_by !== user.id) {
+    return { success: false, error: '无权限操作此功能模块' }
+  }
+  const { data: existing } = await supabase
+    .from('estimate_references')
+==================== 第 025 页结束 ====================
+==================== 第 026 页开始 ====================
+    .select('id')
+    .eq('source_function_module_id', functionModuleId)
+    .maybeSingle()
+  if (existing) {
+    return { success: false, error: '该功能模块已存在于参考库中' }
+  }
+  const { data: ref, error: insertError } = await supabase
+    .from('estimate_references')
+    .insert({
+      module_name: fm.module_name,
+      function_name: fm.function_name,
+      description: fm.description,
+      difficulty_level: fm.difficulty_level,
+      role_estimates: fm.role_estimates || [],
+      estimated_hours: fm.estimated_hours,
+      project_type: metadata.projectType || null,
+      category: metadata.category || null,
+      industry: metadata.industry || null,
+      tech_stack: metadata.techStack || null,
+      source_project_id: fm.project_id,
+      source_function_module_id: functionModuleId,
+      verified_by: user.id,
+    })
+    .select('id')
+    .single()
+  if (insertError) {
+    console.error('提取到参考库失败:', insertError)
+    return { success: false, error: insertError.message }
+  }
+  const embeddingText = buildEmbeddingText({
+    module_name: fm.module_name,
+    function_name: fm.function_name,
+    description: fm.description,
+  })
+  generateEmbedding(embeddingText)
+    .then(async (embedding) => {
+      const supabaseForUpdate = await createClient()
+      await supabaseForUpdate
+        .from('estimate_references')
+        .update({ embedding: JSON.stringify(embedding) })
+        .eq('id', ref.id)
+    })
+    .catch((err) => console.warn('[RAG] 生成 embedding 失败:', err))
+  revalidatePath('/function-library')
+  return { success: true, id: ref.id }
+}
+export async function batchExtractToReferences(
+  projectId: string,
+==================== 第 026 页结束 ====================
+==================== 第 027 页开始 ====================
+  metadata: {
+    projectType?: string
+    category?: string
+    industry?: string
+    techStack?: string[]
+  }
+): Promise<{ success: boolean; error?: string; count?: number }> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return { success: false, error: '请先登录' }
+  }
+  const { data: modules, error: queryError } = await supabase
+    .from('function_modules')
+    .select('*, projects!inner(id, created_by)')
+    .eq('project_id', projectId)
+    .eq('is_verified', true)
+    .eq('projects.created_by', user.id)
+  if (queryError || !modules || modules.length === 0) {
+    return { success: false, error: '没有找到已验证的功能模块' }
+  }
+  const moduleIds = modules.map((m) => m.id)
+  const { data: existingRefs } = await supabase
+    .from('estimate_references')
+    .select('source_function_module_id')
+    .in('source_function_module_id', moduleIds)
+  const existingModuleIds = new Set(
+    (existingRefs || []).map((r) => r.source_function_module_id)
+  )
+  const newModules = modules.filter((m) => !existingModuleIds.has(m.id))
+  if (newModules.length === 0) {
+    return { success: false, error: '所有已验证模块均已在参考库中' }
+  }
+  const references = newModules.map((fm) => ({
+    module_name: fm.module_name,
+    function_name: fm.function_name,
+    description: fm.description,
+    difficulty_level: fm.difficulty_level,
+    role_estimates: fm.role_estimates || [],
+    estimated_hours: fm.estimated_hours,
+    project_type: metadata.projectType || null,
+    category: metadata.category || null,
+    industry: metadata.industry || null,
+    tech_stack: metadata.techStack || null,
+    source_project_id: projectId,
+    source_function_module_id: fm.id,
+==================== 第 027 页结束 ====================
+==================== 第 028 页开始 ====================
+    verified_by: user.id,
+  }))
+  const { data: insertedRefs, error: insertError } = await supabase
+    .from('estimate_references')
+    .insert(references)
+    .select('id, module_name, function_name, description')
+  if (insertError) {
+    console.error('批量提取到参考库失败:', insertError)
+    return { success: false, error: insertError.message }
+  }
+  if (insertedRefs && insertedRefs.length > 0) {
+    const texts = insertedRefs.map((ref) => buildEmbeddingText(ref))
+    generateEmbeddings(texts)
+      .then(async (embeddings) => {
+        const supabaseForUpdate = await createClient()
+        for (let i = 0; i < insertedRefs.length; i++) {
+          await supabaseForUpdate
+            .from('estimate_references')
+            .update({ embedding: JSON.stringify(embeddings[i]) })
+            .eq('id', insertedRefs[i].id)
+        }
+        console.log('[RAG] 批量 embedding 生成完成:', insertedRefs.length)
+      })
+      .catch((err) => console.warn('[RAG] 批量生成 embedding 失败:', err))
+  }
+  revalidatePath('/function-library')
+  return { success: true, count: references.length }
+}
+export async function deleteEstimateReference(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('estimate_references')
+    .delete()
+    .eq('id', id)
+  if (error) {
+    console.error('删除估算参考失败:', error)
+    return { success: false, error: error.message }
+  }
+  revalidatePath('/function-library')
+  return { success: true }
+}
+export async function incrementReferenceUsage(ids: string[]): Promise<void> {
+  if (ids.length === 0) return
+  const supabase = await createClient()
+  for (const id of ids) {
+    try {
+==================== 第 028 页结束 ====================
+==================== 第 029 页开始 ====================
+      await supabase.rpc('increment_estimate_reference_usage', {
+        reference_id: id,
+      })
+    } catch {
+    }
+  }
+}
+export async function getEstimateReferenceStats(): Promise<{
+  totalCount: number
+  projectTypes: string[]
+  categories: string[]
+}> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('estimate_references')
+    .select('project_type, category')
+  if (error || !data) {
+    return { totalCount: 0, projectTypes: [], categories: [] }
+  }
+  const projectTypes = [
+    ...new Set(data.map((d) => d.project_type).filter(Boolean) as string[]),
+  ]
+  const categories = [
+    ...new Set(data.map((d) => d.category).filter(Boolean) as string[]),
+  ]
+  return {
+    totalCount: data.length,
+    projectTypes: projectTypes.sort(),
+    categories: categories.sort(),
+  }
+}
+文件结束 app/actions/estimate-references.ts
+文件开始 app/actions/functions.ts
+'use server'
+import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
+import type { FunctionModule, DifficultyLevel, RoleEstimate } from '@/types'
+export interface FunctionActionResult {
+  error?: string
+  success?: boolean
+  data?: FunctionModule | FunctionModule[]
+}
+export async function getFunctionModules(projectId: string): Promise<FunctionModule[]> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return []
+  }
+==================== 第 029 页结束 ====================
+==================== 第 030 页开始 ====================
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id')
+    .eq('id', projectId)
+    .eq('created_by', user.id)
+    .single()
+  if (!project) {
+    return []
+  }
+  const { data, error } = await supabase
+    .from('function_modules')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('module_name', { ascending: true })
+    .order('function_name', { ascending: true })
+  if (error) {
+    console.error('获取功能模块失败:', error)
+    return []
+  }
+  return data || []
+}
+export async function updateFunctionHours(
+  id: string,
+  estimatedHours: number
+): Promise<FunctionActionResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: '请先登录' }
+  }
+  const { data: functionModule } = await supabase
+    .from('function_modules')
+    .select(`
+      project_id,
+      estimated_hours,
+      role_estimates,
+      projects!inner(created_by)
+    `)
+    .eq('id', id)
+    .eq('projects.created_by', user.id)
+    .single()
+  if (!functionModule) {
+    return { error: '功能模块不存在或无权限' }
+  }
+  if (estimatedHours < 0) {
+    return { error: '工时不能为负数' }
+  }
+  const updatePayload: { estimated_hours: number; role_estimates?: RoleEstimate[] } = {
+==================== 第 030 页结束 ====================
+==================== 第 031 页开始 ====================
+    estimated_hours: estimatedHours,
+  }
+  const roleEstimates = functionModule.role_estimates as RoleEstimate[] | null
+  if (roleEstimates && roleEstimates.length > 0) {
+    const oldHours = functionModule.estimated_hours as number
+    if (oldHours > 0) {
+      const ratio = estimatedHours / oldHours
+      updatePayload.role_estimates = roleEstimates.map((re) => ({
+        ...re,
+        days: Math.round(re.days * ratio * 10) / 10,
+      }))
+    }
+  }
+  const { data, error } = await supabase
+    .from('function_modules')
+    .update(updatePayload)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) {
+    console.error('更新功能工时失败:', error)
+    return { error: '更新失败，请重试' }
+  }
+  revalidatePath(`/projects/${functionModule.project_id}`)
+  revalidatePath(`/projects/${functionModule.project_id}/functions`)
+  return { success: true, data }
+}
+export async function updateRoleEstimateDays(
+  id: string,
+  roleIndex: number,
+  newDays: number
+): Promise<FunctionActionResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: '请先登录' }
+  }
+  const { data: functionModule } = await supabase
+    .from('function_modules')
+    .select(`
+      project_id,
+      role_estimates,
+      projects!inner(created_by)
+    `)
+    .eq('id', id)
+    .eq('projects.created_by', user.id)
+    .single()
+  if (!functionModule) {
+==================== 第 031 页结束 ====================
+==================== 第 032 页开始 ====================
+    return { error: '功能模块不存在或无权限' }
+  }
+  if (newDays < 0) {
+    return { error: '工时不能为负数' }
+  }
+  const roleEstimates = functionModule.role_estimates as RoleEstimate[] | null
+  if (!roleEstimates || roleIndex < 0 || roleIndex >= roleEstimates.length) {
+    return { error: '角色工时数据不存在' }
+  }
+  const updatedEstimates = roleEstimates.map((re, idx) =>
+    idx === roleIndex ? { ...re, days: newDays } : re
+  )
+  const totalDays = updatedEstimates.reduce((sum, re) => sum + re.days, 0)
+  const estimatedHours = totalDays * 8
+  const { data, error } = await supabase
+    .from('function_modules')
+    .update({
+      role_estimates: updatedEstimates,
+      estimated_hours: estimatedHours,
+    })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) {
+    console.error('更新角色工时失败:', error)
+    return { error: '更新失败，请重试' }
+  }
+  revalidatePath(`/projects/${functionModule.project_id}`)
+  revalidatePath(`/projects/${functionModule.project_id}/functions`)
+  return { success: true, data }
+}
+export async function updateFunctionDifficulty(
+  id: string,
+  difficultyLevel: DifficultyLevel
+): Promise<FunctionActionResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: '请先登录' }
+  }
+  const { data: functionModule } = await supabase
+    .from('function_modules')
+    .select(`
+      project_id,
+      projects!inner(created_by)
+    `)
+    .eq('id', id)
+    .eq('projects.created_by', user.id)
+==================== 第 032 页结束 ====================
+==================== 第 033 页开始 ====================
+    .single()
+  if (!functionModule) {
+    return { error: '功能模块不存在或无权限' }
+  }
+  const { data, error } = await supabase
+    .from('function_modules')
+    .update({ difficulty_level: difficultyLevel })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) {
+    console.error('更新功能难度失败:', error)
+    return { error: '更新失败，请重试' }
+  }
+  revalidatePath(`/projects/${functionModule.project_id}`)
+  revalidatePath(`/projects/${functionModule.project_id}/functions`)
+  return { success: true, data }
+}
+export async function deleteFunctionModule(id: string): Promise<FunctionActionResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: '请先登录' }
+  }
+  const { data: functionModule } = await supabase
+    .from('function_modules')
+    .select(`
+      project_id,
+      projects!inner(created_by)
+    `)
+    .eq('id', id)
+    .eq('projects.created_by', user.id)
+    .single()
+  if (!functionModule) {
+    return { error: '功能模块不存在或无权限' }
+  }
+  const { error } = await supabase
+    .from('function_modules')
+    .delete()
+    .eq('id', id)
+  if (error) {
+    console.error('删除功能模块失败:', error)
+    return { error: '删除失败，请重试' }
+  }
+  revalidatePath(`/projects/${functionModule.project_id}`)
+  revalidatePath(`/projects/${functionModule.project_id}/functions`)
+  return { success: true }
+}
+==================== 第 033 页结束 ====================
+==================== 第 034 页开始 ====================
+export async function addFunctionModule(
+  projectId: string,
+  data: {
+    moduleName: string
+    functionName: string
+    description?: string
+    difficultyLevel: DifficultyLevel
+    estimatedHours: number
+  }
+): Promise<FunctionActionResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: '请先登录' }
+  }
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id')
+    .eq('id', projectId)
+    .eq('created_by', user.id)
+    .single()
+  if (!project) {
+    return { error: '项目不存在或无权限' }
+  }
+  if (!data.moduleName?.trim() || !data.functionName?.trim()) {
+    return { error: '模块名称和功能名称为必填项' }
+  }
+  const { data: newModule, error } = await supabase
+    .from('function_modules')
+    .insert({
+      project_id: projectId,
+      module_name: data.moduleName.trim(),
+      function_name: data.functionName.trim(),
+      description: data.description?.trim() || null,
+      difficulty_level: data.difficultyLevel,
+      estimated_hours: data.estimatedHours,
+    })
+    .select()
+    .single()
+  if (error) {
+    console.error('添加功能模块失败:', error)
+    return { error: '添加失败，请重试' }
+  }
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath(`/projects/${projectId}/functions`)
+  return { success: true, data: newModule }
+}
+export async function toggleFunctionVerified(
+==================== 第 034 页结束 ====================
+==================== 第 035 页开始 ====================
+  id: string
+): Promise<FunctionActionResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: '请先登录' }
+  }
+  const { data: functionModule } = await supabase
+    .from('function_modules')
+    .select(`
+      is_verified,
+      project_id,
+      projects!inner(created_by)
+    `)
+    .eq('id', id)
+    .eq('projects.created_by', user.id)
+    .single()
+  if (!functionModule) {
+    return { error: '功能模块不存在或无权限' }
+  }
+  const { data, error } = await supabase
+    .from('function_modules')
+    .update({ is_verified: !functionModule.is_verified })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) {
+    console.error('更新验证状态失败:', error)
+    return { error: '更新失败，请重试' }
+  }
+  revalidatePath(`/projects/${functionModule.project_id}/functions`)
+  return { success: true, data }
+}
+export async function getFunctionSummary(projectId: string): Promise<{
+  totalModules: number
+  totalHours: number
+  byDifficulty: Record<DifficultyLevel, number>
+}> {
+  const modules = await getFunctionModules(projectId)
+  const byDifficulty: Record<DifficultyLevel, number> = {
+    simple: 0,
+    medium: 0,
+    complex: 0,
+    very_complex: 0,
+  }
+  let totalHours = 0
+  for (const module of modules) {
+    totalHours += module.estimated_hours
+==================== 第 035 页结束 ====================
+==================== 第 036 页开始 ====================
+    byDifficulty[module.difficulty_level]++
+  }
+  return {
+    totalModules: modules.length,
+    totalHours,
+    byDifficulty,
+  }
+}
+文件结束 app/actions/functions.ts
+文件开始 app/actions/elicitation-sessions.ts
+'use server'
+import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
+import type {
+  ElicitationSession,
+  ElicitationMessage,
+  ElicitationCollectedInfo,
+} from '@/types'
+export interface ActionResult {
+  error?: string
+  success?: boolean
+  data?: unknown
+}
+export async function getActiveElicitationSession(
+  projectId: string
+): Promise<ElicitationSession | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return null
+  }
+  const { data, error } = await supabase
+    .from('elicitation_sessions')
+    .select('*')
+    .eq('project_id', projectId)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
+  if (error && error.code !== 'PGRST116') {
+    console.error('获取 elicitation 会话失败:', error)
+    return null
+  }
+  return data
+}
+export async function getLatestElicitationSession(
+  projectId: string
+): Promise<ElicitationSession | null> {
+==================== 第 036 页结束 ====================
+==================== 第 037 页开始 ====================
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return null
+  }
+  const { data, error } = await supabase
+    .from('elicitation_sessions')
+    .select('*')
+    .eq('project_id', projectId)
+    .in('status', ['active', 'completed'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
+  if (error && error.code !== 'PGRST116') {
+    console.error('获取最新 elicitation 会话失败:', error)
+    return null
+  }
+  return data
+}
+export async function getElicitationSession(
+  sessionId: string
+): Promise<ElicitationSession | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return null
+  }
+  const { data, error } = await supabase
+    .from('elicitation_sessions')
+    .select('*')
+    .eq('id', sessionId)
+    .single()
+  if (error) {
+    console.error('获取 elicitation 会话失败:', error)
+    return null
+  }
+  return data
+}
+export async function getElicitationSessionWithMessages(sessionId: string): Promise<{
+  session: ElicitationSession
+  messages: ElicitationMessage[]
+} | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return null
+  }
+  const { data: session, error: sessionError } = await supabase
+==================== 第 037 页结束 ====================
+==================== 第 038 页开始 ====================
+    .from('elicitation_sessions')
+    .select('*')
+    .eq('id', sessionId)
+    .single()
+  if (sessionError || !session) {
+    console.error('获取 elicitation 会话失败:', sessionError)
+    return null
+  }
+  const { data: messages, error: messagesError } = await supabase
+    .from('elicitation_messages')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('round', { ascending: true })
+    .order('created_at', { ascending: true })
+  if (messagesError) {
+    console.error('获取 elicitation 消息失败:', messagesError)
+    return null
+  }
+  return {
+    session,
+    messages: messages || [],
+  }
+}
+export async function getProjectElicitationSessions(
+  projectId: string
+): Promise<ElicitationSession[]> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return []
+  }
+  const { data, error } = await supabase
+    .from('elicitation_sessions')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false })
+  if (error) {
+    console.error('获取 elicitation 会话列表失败:', error)
+    return []
+  }
+  return data || []
+}
+export async function createElicitationSession(
+  projectId: string,
+  maxRounds: number = 8
+): Promise<ElicitationSession | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+==================== 第 038 页结束 ====================
+==================== 第 039 页开始 ====================
+  if (!user) {
+    return null
+  }
+  await supabase
+    .from('elicitation_sessions')
+    .update({ status: 'cancelled' })
+    .eq('project_id', projectId)
+    .eq('status', 'active')
+  const { data, error } = await supabase
+    .from('elicitation_sessions')
+    .insert({
+      project_id: projectId,
+      status: 'active',
+      current_round: 0,
+      max_rounds: maxRounds,
+      collected_info: {},
+    })
+    .select()
+    .single()
+  if (error) {
+    console.error('创建 elicitation 会话失败:', error)
+    return null
+  }
+  revalidatePath(`/projects/${projectId}`)
+  return data
+}
+export async function saveElicitationMessage(
+  sessionId: string,
+  round: number,
+  role: 'assistant' | 'user',
+  content: string,
+  questions?: { question: string; category: string }[]
+): Promise<ElicitationMessage | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return null
+  }
+  const { data, error } = await supabase
+    .from('elicitation_messages')
+    .insert({
+      session_id: sessionId,
+      round,
+      role,
+      content,
+      questions: questions || null,
+    })
+    .select()
+==================== 第 039 页结束 ====================
+==================== 第 040 页开始 ====================
+    .single()
+  if (error) {
+    console.error('保存 elicitation 消息失败:', error)
+    return null
+  }
+  return data
+}
+export async function updateElicitationCollectedInfo(
+  sessionId: string,
+  info: Partial<ElicitationCollectedInfo>
+): Promise<ActionResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: '请先登录' }
+  }
+  const { data: session } = await supabase
+    .from('elicitation_sessions')
+    .select('collected_info, current_round')
+    .eq('id', sessionId)
+    .single()
+  const existingInfo = (session?.collected_info || {}) as ElicitationCollectedInfo
+  const mergedInfo = deepMergeCollectedInfo(existingInfo, info)
+  mergedInfo._meta = {
+    lastUpdatedRound: session?.current_round || 0,
+    confirmedFields: [
+      ...(existingInfo._meta?.confirmedFields || []),
+      ...Object.keys(info).filter(k => k !== '_meta'),
+    ].filter((v, i, a) => a.indexOf(v) === i),
+  }
+  const { error } = await supabase
+    .from('elicitation_sessions')
+    .update({
+      collected_info: mergedInfo,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', sessionId)
+  if (error) {
+    console.error('更新 collected_info 失败:', error)
+    return { error: '更新失败' }
+  }
+  return { success: true, data: mergedInfo }
+}
+function deepMergeCollectedInfo(
+  target: ElicitationCollectedInfo,
+  source: Partial<ElicitationCollectedInfo>
+): ElicitationCollectedInfo {
+  const result: ElicitationCollectedInfo = { ...target }
+==================== 第 040 页结束 ====================
+==================== 第 041 页开始 ====================
+  for (const key of Object.keys(source) as Array<keyof ElicitationCollectedInfo>) {
+    const sourceValue = source[key]
+    const targetValue = target[key]
+    if (sourceValue === undefined) continue
+    if (Array.isArray(sourceValue) && Array.isArray(targetValue)) {
+      (result as any)[key] = [...new Set([...targetValue, ...sourceValue])]
+    } else if (
+      typeof sourceValue === 'object' &&
+      sourceValue !== null &&
+      typeof targetValue === 'object' &&
+      targetValue !== null &&
+      !Array.isArray(sourceValue)
+    ) {
+      (result as any)[key] = { ...targetValue, ...sourceValue }
+    } else {
+      (result as any)[key] = sourceValue
+    }
+  }
+  return result
+}
+export async function advanceElicitationRound(sessionId: string): Promise<{
+  session: ElicitationSession | null
+  isComplete: boolean
+}> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { session: null, isComplete: false }
+  }
+  const { data: session } = await supabase
+    .from('elicitation_sessions')
+    .select('*')
+    .eq('id', sessionId)
+    .single()
+  if (!session) {
+    return { session: null, isComplete: false }
+  }
+  const newRound = session.current_round + 1
+  const isComplete = newRound >= session.max_rounds
+  if (isComplete) {
+    const { data: updatedSession } = await supabase
+      .from('elicitation_sessions')
+      .update({
+        current_round: newRound,
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', sessionId)
+==================== 第 041 页结束 ====================
+==================== 第 042 页开始 ====================
+      .select()
+      .single()
+    return { session: updatedSession, isComplete: true }
+  }
+  const { data: updatedSession } = await supabase
+    .from('elicitation_sessions')
+    .update({ current_round: newRound })
+    .eq('id', sessionId)
+    .select()
+    .single()
+  return { session: updatedSession, isComplete: false }
+}
+export async function completeElicitationSession(
+  sessionId: string
+): Promise<ElicitationSession | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return null
+  }
+  const { data, error } = await supabase
+    .from('elicitation_sessions')
+    .update({
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+    })
+    .eq('id', sessionId)
+    .select()
+    .single()
+  if (error) {
+    console.error('完成 elicitation 会话失败:', error)
+    return null
+  }
+  return data
+}
+export async function cancelElicitationSession(
+  sessionId: string
+): Promise<ElicitationSession | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return null
+  }
+  const { data, error } = await supabase
+    .from('elicitation_sessions')
+    .update({
+      status: 'cancelled',
+      updated_at: new Date().toISOString(),
+==================== 第 042 页结束 ====================
+==================== 第 043 页开始 ====================
+    })
+    .eq('id', sessionId)
+    .select()
+    .single()
+  if (error) {
+    console.error('取消 elicitation 会话失败:', error)
+    return null
+  }
+  return data
+}
+export async function getOrCreateElicitationSession(
+  projectId: string,
+  maxRounds: number = 8
+): Promise<ElicitationSession | null> {
+  const existing = await getActiveElicitationSession(projectId)
+  if (existing) {
+    return existing
+  }
+  return createElicitationSession(projectId, maxRounds)
+}
+文件结束 app/actions/elicitation-sessions.ts
+文件开始 lib/agents/graph.ts
+import { StateGraph, START, END } from '@langchain/langgraph'
+import {
+  PresalesStateAnnotation,
+  createInitialState,
+  extractWorkflowResult,
+  type PresalesState,
+  type WorkflowResult,
+  type WorkflowSystemConfig,
+} from './state'
+import { analyzeNode } from './nodes/analyze'
+import { breakdownNode } from './nodes/breakdown'
+import { estimateNode } from './nodes/estimate'
+import { calculateNode } from './nodes/calculate'
+function shouldContinue(state: PresalesState): string {
+  if (state.error) {
+    console.log('[Graph] 检测到错误，终止工作流:', state.error)
+    return 'end'
+  }
+  switch (state.currentStep) {
+    case 'breakdown':
+      return 'breakdown'
+    case 'estimate':
+      return 'estimate'
+    case 'calculate':
+      return 'calculate'
+    case 'complete':
+==================== 第 043 页结束 ====================
+==================== 第 044 页开始 ====================
+      return 'end'
+    default:
+      return 'end'
+  }
+}
+const workflow = new StateGraph(PresalesStateAnnotation)
+  .addNode('analyze', analyzeNode)
+  .addNode('breakdown', breakdownNode)
+  .addNode('estimate', estimateNode)
+  .addNode('calculate', calculateNode)
+  .addEdge(START, 'analyze')
+  .addConditionalEdges('analyze', shouldContinue, {
+    breakdown: 'breakdown',
+    end: END,
+  })
+  .addConditionalEdges('breakdown', shouldContinue, {
+    estimate: 'estimate',
+    end: END,
+  })
+  .addConditionalEdges('estimate', shouldContinue, {
+    calculate: 'calculate',
+    end: END,
+  })
+  .addConditionalEdges('calculate', shouldContinue, {
+    end: END,
+  })
+export const presalesGraph = workflow.compile()
+export async function runPresalesWorkflow(
+  projectId: string,
+  requirementId: string,
+  rawRequirement: string,
+  projectDescription: string = '',
+  systemConfig: WorkflowSystemConfig | null = null
+): Promise<WorkflowResult> {
+  console.log('[Graph] 开始执行售前成本估算工作流:', {
+    projectId,
+    requirementId,
+    requirementLength: rawRequirement.length,
+    systemConfig,
+  })
+  const startTime = Date.now()
+  try {
+    const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription, systemConfig)
+    const finalState = await presalesGraph.invoke(initialState)
+    const duration = Date.now() - startTime
+    console.log('[Graph] 工作流执行完成:', {
+      duration: `${duration}ms`,
+      success: !finalState.error,
+==================== 第 044 页结束 ====================
+==================== 第 045 页开始 ====================
+      hasAnalysis: !!finalState.analysis,
+      functionsCount: finalState.functions?.length || 0,
+      hasEstimation: !!finalState.estimation,
+      hasCost: !!finalState.cost,
+    })
+    return extractWorkflowResult(finalState)
+  } catch (error) {
+    const duration = Date.now() - startTime
+    console.error('[Graph] 工作流执行失败:', {
+      duration: `${duration}ms`,
+      error,
+    })
+    return {
+      success: false,
+      analysis: null,
+      functions: [],
+      identifiedRoles: [],
+      additionalWork: [],
+      estimation: null,
+      cost: null,
+      error: error instanceof Error ? error.message : '工作流执行失败',
+    }
+  }
+}
+export async function* streamPresalesWorkflow(
+  projectId: string,
+  requirementId: string,
+  rawRequirement: string,
+  projectDescription: string = '',
+  systemConfig: WorkflowSystemConfig | null = null
+): AsyncIterable<{ step: string; state: Partial<PresalesState> }> {
+  console.log('[Graph] 开始流式执行工作流')
+  const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription, systemConfig)
+  const stream = await presalesGraph.stream(initialState, {
+    streamMode: 'values',
+  })
+  for await (const state of stream) {
+    yield {
+      step: state.currentStep,
+      state: {
+        currentStep: state.currentStep,
+        analysis: state.analysis,
+        functions: state.functions,
+        identifiedRoles: state.identifiedRoles,
+        additionalWork: state.additionalWork,
+        estimation: state.estimation,
+        cost: state.cost,
+        error: state.error,
+==================== 第 045 页结束 ====================
+==================== 第 046 页开始 ====================
+        isComplete: state.isComplete,
+      },
+    }
+  }
+}
+export const WORKFLOW_STEPS = [
+  {
+    key: 'analyze',
+    label: '需求分析',
+    description: '提取项目类型、业务目标、核心功能',
+  },
+  {
+    key: 'breakdown',
+    label: '功能拆解',
+    description: '拆分功能模块、查询功能库',
+  },
+  {
+    key: 'estimate',
+    label: '工时评估',
+    description: '计算开发工时、人员配置',
+  },
+  {
+    key: 'calculate',
+    label: '成本计算',
+    description: '计算人力成本、生成报价',
+  },
+] as const
+export type WorkflowStepKey = (typeof WORKFLOW_STEPS)[number]['key']
+文件结束 lib/agents/graph.ts
+文件开始 lib/agents/state.ts
+import { Annotation, MessagesAnnotation } from '@langchain/langgraph'
+import type { ParsedRequirement, FunctionModule, EffortEstimation, CostEstimate } from '@/types'
+export type WorkflowStep = 'analyze' | 'breakdown' | 'estimate' | 'calculate' | 'complete'
+export interface WorkflowSystemConfig {
+  laborCostPerDay: number
+  riskBufferPercentage: number
+  workingHoursPerDay: number
+}
+export interface AgentAnalysisResult {
+  projectType: string
+  businessGoals: string[]
+  keyFeatures: string[]
+  techStack: string[]
+  nonFunctionalRequirements: {
+    performance?: string
+    security?: string
+    scalability?: string
+  }
+==================== 第 046 页结束 ====================
+==================== 第 047 页开始 ====================
+  risks: string[]
+}
+export interface RoleEstimate {
+  role: string
+  days: number
+  reason?: string
+}
+export interface AgentFunctionModule {
+  moduleName: string
+  functionName: string
+  description: string
+  difficultyLevel: 'simple' | 'medium' | 'complex' | 'very_complex'
+  roleEstimates: RoleEstimate[]
+  dependencies?: string[]
+}
+export interface AdditionalWorkItem {
+  workItem: string
+  days: number
+  assignedRoles: string[]
+}
+export interface IdentifiedRole {
+  role: string
+  responsibility: string
+  headcount: number
+}
+export interface AgentEffortEstimation {
+  identifiedRoles: IdentifiedRole[]
+  additionalWork: AdditionalWorkItem[]
+  roleSummary: {
+    role: string
+    totalDays: number
+    headcount: number
+  }[]
+  bufferCoefficient: number
+  bufferReason: string
+}
+export interface AgentCostEstimate {
+  baseDays: number
+  bufferedDays: number
+  bufferCoefficient: number
+  roleBreakdown: {
+    role: string
+    days: number
+    cost: number
+    headcount: number
+  }[]
+  additionalWorkBreakdown: {
+    workItem: string
+==================== 第 047 页结束 ====================
+==================== 第 048 页开始 ====================
+    days: number
+    cost: number
+  }[]
+  laborCost: number
+  serviceCost: number
+  infrastructureCost: number
+  totalCost: number
+  thirdPartyServices: {
+    name: string
+    cost: number
+  }[]
+}
+export const PresalesStateAnnotation = Annotation.Root({
+  ...MessagesAnnotation.spec,
+  projectId: Annotation<string>({
+    default: () => '',
+    reducer: (_, next) => next,
+  }),
+  requirementId: Annotation<string>({
+    default: () => '',
+    reducer: (_, next) => next,
+  }),
+  rawRequirement: Annotation<string>({
+    default: () => '',
+    reducer: (_, next) => next,
+  }),
+  projectDescription: Annotation<string>({
+    default: () => '',
+    reducer: (_, next) => next,
+  }),
+  systemConfig: Annotation<WorkflowSystemConfig | null>({
+    default: () => null,
+    reducer: (_, next) => next,
+  }),
+  analysis: Annotation<AgentAnalysisResult | null>({
+    default: () => null,
+    reducer: (_, next) => next,
+  }),
+  functions: Annotation<AgentFunctionModule[]>({
+    default: () => [],
+    reducer: (_, next) => next,
+  }),
+  identifiedRoles: Annotation<IdentifiedRole[]>({
+    default: () => [],
+    reducer: (_, next) => next,
+  }),
+  additionalWork: Annotation<AdditionalWorkItem[]>({
+    default: () => [],
+==================== 第 048 页结束 ====================
+==================== 第 049 页开始 ====================
+    reducer: (_, next) => next,
+  }),
+  estimation: Annotation<AgentEffortEstimation | null>({
+    default: () => null,
+    reducer: (_, next) => next,
+  }),
+  cost: Annotation<AgentCostEstimate | null>({
+    default: () => null,
+    reducer: (_, next) => next,
+  }),
+  currentStep: Annotation<WorkflowStep>({
+    default: () => 'analyze',
+    reducer: (_, next) => next,
+  }),
+  error: Annotation<string | null>({
+    default: () => null,
+    reducer: (_, next) => next,
+  }),
+  isComplete: Annotation<boolean>({
+    default: () => false,
+    reducer: (_, next) => next,
+  }),
+})
+export type PresalesState = typeof PresalesStateAnnotation.State
+export function createInitialState(
+  projectId: string,
+  requirementId: string,
+  rawRequirement: string,
+  projectDescription: string = '',
+  systemConfig: WorkflowSystemConfig | null = null
+): Partial<PresalesState> {
+  return {
+    projectId,
+    requirementId,
+    rawRequirement,
+    projectDescription,
+    systemConfig,
+    messages: [],
+    analysis: null,
+    functions: [],
+    identifiedRoles: [],
+    additionalWork: [],
+    estimation: null,
+    cost: null,
+    currentStep: 'analyze',
+    error: null,
+    isComplete: false,
+  }
+==================== 第 049 页结束 ====================
+==================== 第 050 页开始 ====================
+}
+export interface WorkflowResult {
+  success: boolean
+  analysis: AgentAnalysisResult | null
+  functions: AgentFunctionModule[]
+  identifiedRoles: IdentifiedRole[]
+  additionalWork: AdditionalWorkItem[]
+  estimation: AgentEffortEstimation | null
+  cost: AgentCostEstimate | null
+  error: string | null
+}
+export function extractWorkflowResult(state: PresalesState): WorkflowResult {
+  return {
+    success: state.isComplete && !state.error,
+    analysis: state.analysis,
+    functions: state.functions,
+    identifiedRoles: state.identifiedRoles,
+    additionalWork: state.additionalWork,
+    estimation: state.estimation,
+    cost: state.cost,
+    error: state.error,
+  }
+}
+文件结束 lib/agents/state.ts
+文件开始 lib/agents/nodes/analyze.ts
+import { generateText, Output } from 'ai'
+import { z } from 'zod'
+import { defaultModel } from '@/lib/ai/config'
+import { getActiveTemplate } from '@/app/actions/templates'
+import { createTelemetryConfig } from '@/lib/observability/langfuse'
+import type { PresalesState, AgentAnalysisResult } from '../state'
+const requirementAnalysisSchema = z.object({
+  projectType: z.string().describe('项目类型，如：电商平台、管理系统、移动应用等'),
+  businessGoals: z.array(z.string()).describe('业务目标列表'),
+  keyFeatures: z.array(z.string()).describe('核心功能需求列表'),
+  techStack: z.array(z.string()).describe('建议的技术栈'),
+  nonFunctionalRequirements: z.object({
+    performance: z.string().optional().describe('性能要求'),
+    security: z.string().optional().describe('安全要求'),
+    scalability: z.string().optional().describe('扩展性要求'),
+  }).describe('非功能性需求'),
+  risks: z.array(z.string()).describe('潜在风险列表'),
+})
+const DEFAULT_ANALYSIS_PROMPT = `你是一位经验丰富的售前技术顾问，擅长分析客户需求并提取关键信息。
+请仔细分析以下需求文档，提取并结构化以下信息：
+1. **项目类型**：判断这是什么类型的项目（如电商平台、企业管理系统、移动应用等）
+2. **业务目标**：客户希望通过这个项目达成什么业务目标
+3. **核心功能**：列出所有明确提及的功能需求
+==================== 第 050 页结束 ====================
+==================== 第 051 页开始 ====================
+4. **技术栈**：根据需求特点推荐合适的技术栈
+5. **非功能性需求**：
+   - 性能要求（响应时间、并发量等）
+   - 安全要求（数据安全、权限控制等）
+   - 扩展性要求（未来扩展方向）
+6. **潜在风险**：识别项目可能面临的风险
+---
+**项目描述**：
+{项目描述}
+---
+**需求文档内容**：
+{需求内容}
+---
+请以结构化的 JSON 格式返回分析结果。`
+async function getAnalysisPrompt(industry?: string | null): Promise<string> {
+  try {
+    const template = await getActiveTemplate('requirement_analysis', industry || undefined)
+    if (template?.prompt_content) {
+      console.log('[Agent] 使用数据库模板:', template.template_name)
+      return template.prompt_content
+    }
+  } catch (error) {
+    console.warn('[Agent] 获取模板失败，使用默认模板:', error)
+  }
+  return DEFAULT_ANALYSIS_PROMPT
+}
+export async function analyzeNode(
+  state: PresalesState
+): Promise<Partial<PresalesState>> {
+  if (!state.rawRequirement || state.rawRequirement.trim() === '') {
+    return {
+      error: '需求内容不能为空',
+      currentStep: 'analyze',
+    }
+  }
+  try {
+    const promptTemplate = await getAnalysisPrompt()
+    const prompt = promptTemplate
+      .replace('{项目描述}', state.projectDescription || '未提供项目描述')
+      .replace('{需求内容}', state.rawRequirement)
+      .replace('{requirement}', state.rawRequirement)
+      .replace('{projectDescription}', state.projectDescription || '未提供项目描述')
+    const { output } = await generateText({
+      model: defaultModel,
+      output: Output.object({
+        schema: requirementAnalysisSchema,
+      }),
+      prompt,
+==================== 第 051 页结束 ====================
+==================== 第 052 页开始 ====================
+      experimental_telemetry: createTelemetryConfig('workflow-analyze', {
+        projectId: state.projectId,
+        requirementId: state.requirementId,
+      }),
+    })
+    if (!output) {
+      return {
+        error: '需求分析未返回有效结果',
+        currentStep: 'analyze',
+      }
+    }
+    const analysis: AgentAnalysisResult = {
+      projectType: output.projectType,
+      businessGoals: output.businessGoals,
+      keyFeatures: output.keyFeatures,
+      techStack: output.techStack,
+      nonFunctionalRequirements: {
+        performance: output.nonFunctionalRequirements.performance,
+        security: output.nonFunctionalRequirements.security,
+        scalability: output.nonFunctionalRequirements.scalability,
+      },
+      risks: output.risks,
+    }
+    console.log('[Agent] 需求分析完成:', {
+      projectType: analysis.projectType,
+      featuresCount: analysis.keyFeatures.length,
+      risksCount: analysis.risks.length,
+    })
+    return {
+      analysis,
+      currentStep: 'breakdown',
+      error: null,
+    }
+  } catch (error) {
+    console.error('[Agent] 需求分析失败:', error)
+    return {
+      error: `需求分析失败: ${error instanceof Error ? error.message : '未知错误'}`,
+      currentStep: 'analyze',
+    }
+  }
+}
+文件结束 lib/agents/nodes/analyze.ts
+文件开始 lib/agents/nodes/breakdown.ts
+import { generateText } from 'ai'
+import { defaultModel } from '@/lib/ai/config'
+import { createTelemetryConfig } from '@/lib/observability/langfuse'
+import { getReferencesForBreakdown, incrementReferenceUsage } from '@/app/actions/estimate-references'
+import type { EstimateReference } from '@/types'
+==================== 第 052 页结束 ====================
+==================== 第 053 页开始 ====================
+import type { PresalesState, AgentFunctionModule, IdentifiedRole, AdditionalWorkItem } from '../state'
+function parseCSVLine(line: string): string[] {
+  const result: string[] = []
+  let current = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]
+    if (char === '"') {
+      inQuotes = !inQuotes
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim())
+      current = ''
+    } else {
+      current += char
+    }
+  }
+  result.push(current.trim())
+  return result
+}
+function parseBreakdownCSV(text: string): {
+  identifiedRoles: IdentifiedRole[]
+  modules: AgentFunctionModule[]
+  additionalWork: AdditionalWorkItem[]
+} {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l)
+  const identifiedRoles: IdentifiedRole[] = []
+  const moduleMap = new Map<string, AgentFunctionModule>()
+  const additionalWork: AdditionalWorkItem[] = []
+  let currentSection = ''
+  for (const line of lines) {
+    if (line === 'ROLES' || line.startsWith('### ROLES') || line.startsWith('###ROLES')) {
+      currentSection = 'roles'
+      continue
+    }
+    if (line === 'MODULES' || line.startsWith('### MODULES') || line.startsWith('###MODULES')) {
+      currentSection = 'modules'
+      continue
+    }
+    if (line === 'ADDITIONAL' || line.startsWith('### ADDITIONAL') || line.startsWith('###ADDITIONAL')) {
+      currentSection = 'additional'
+      continue
+    }
+    if (line.startsWith('角色,') || line.startsWith('模块名,') || line.startsWith('工作项,')) {
+      continue
+    }
+    if (!line || line.startsWith('---') || line.startsWith('```')) {
+      continue
+    }
+==================== 第 053 页结束 ====================
+==================== 第 054 页开始 ====================
+    const fields = parseCSVLine(line)
+    if (currentSection === 'roles' && fields.length >= 3) {
+      identifiedRoles.push({
+        role: fields[0],
+        responsibility: fields[1],
+        headcount: parseInt(fields[2]) || 1,
+      })
+    } else if (currentSection === 'modules' && fields.length >= 4) {
+      const [moduleName, functionName, description, roleEstimatesStr] = fields
+      const roleEstimates = roleEstimatesStr.split(';').map(item => {
+        const [role, daysStr] = item.split(':')
+        return {
+          role: role?.trim() || '',
+          days: parseFloat(daysStr) || 0,
+          reason: undefined,
+        }
+      }).filter(r => r.role && r.days > 0)
+      moduleMap.set(`${moduleName}|${functionName}`, {
+        moduleName,
+        functionName,
+        description,
+        difficultyLevel: 'medium',
+        roleEstimates,
+        dependencies: [],
+      })
+    } else if (currentSection === 'additional' && fields.length >= 3) {
+      additionalWork.push({
+        workItem: fields[0],
+        days: parseFloat(fields[1]) || 0,
+        assignedRoles: fields[2].split(';').map(r => r.trim()).filter(r => r),
+      })
+    }
+  }
+  return {
+    identifiedRoles,
+    modules: Array.from(moduleMap.values()),
+    additionalWork,
+  }
+}
+const BREAKDOWN_PROMPT = `你是一位专业的软件项目工时评估专家。
+根据需求文档完成以下任务，并以 CSV 格式输出结果。
+## 任务
+1. 识别项目所需的开发角色
+2. 将项目拆解为详细的功能模块
+3. 为每个功能评估各角色的工时（人天）
+4. 评估额外的非功能开发工作
+## 角色参考
+- Web/移动应用：产品经理、UI/UX设计师、前端开发、后端开发、小程序开发、测试工程师
+==================== 第 054 页结束 ====================
+==================== 第 055 页开始 ====================
+- 嵌入式系统：嵌入式工程师、硬件工程师、驱动开发、固件工程师、测试工程师
+- 数据平台：数据工程师、ETL开发、数据分析师、后端开发、测试工程师
+## 工时评估原则
+| 复杂度 | 工时范围 | 判断标准 |
+|-------|---------|---------|
+| 简单 | 1-3人天 | 单一功能，无复杂逻辑，标准CRUD |
+| 中等 | 3-8人天 | 多个子功能，有业务逻辑，需要多表关联 |
+| 复杂 | 8-15人天 | 涉及多系统交互，复杂算法，第三方对接 |
+| 非常复杂 | 15+人天 | 全新领域，高度定制化，核心业务逻辑 |
+### 复杂度判断因素
+- 是否涉及第三方API对接
+- 是否有复杂业务逻辑（如分账、库存、权限）
+- 是否需要多端协作
+- 是否有特殊交互设计
+- 是否涉及支付、安全等敏感功能
+- 是否需要数据迁移或兼容
+---
+**项目描述**：
+{projectDescription}
+**原始需求文档**：
+{rawRequirement}
+---
+## 输出格式要求
+严格按以下 CSV 格式输出，不要输出任何解释文字：
+### ROLES
+角色,职责,人数
+产品经理,需求分析原型设计,1
+UI设计师,界面交互设计,1
+...
+### MODULES
+模块名,功能名,描述,角色工时
+用户模块,微信授权登录,获取微信号码完成注册,产品经理:1;UI设计师:0.5;小程序开发:2;后端开发:2;测试工程师:1
+...
+### ADDITIONAL
+工作项,人天,角色列表
+需求评审,2,产品经理
+联调测试,3,前端开发;后端开发;测试工程师
+...
+注意：
+1. 要保证拆解功能模块的完整性
+2. 角色工时格式为 角色名:人天，多个角色用分号分隔
+3. 每个功能的所有参与角色工时写在一行
+4. 不要遗漏任何角色的工时评估
+{referenceSection}`
+function formatReferencesForPrompt(references: EstimateReference[]): string {
+  if (references.length === 0) return ''
+  const lines = references.map((ref) => {
+    const roleStr = ref.role_estimates
+==================== 第 055 页结束 ====================
+==================== 第 056 页开始 ====================
+      .map((r) => `${r.role}:${r.days}`)
+      .join(';')
+    return `${ref.module_name},${ref.function_name},${ref.description || ''},${roleStr}`
+  })
+  return `
+## 历史验证参考（仅供参考，请根据实际需求独立判断）
+以下是历史项目中经过验证的功能工时评估，供你参考类似功能的工时规模：
+模块名,功能名,描述,角色工时
+${lines.join('\n')}
+注意：以上仅为参考，实际工时应根据本项目具体需求和复杂度独立评估。`
+}
+export async function breakdownNode(
+  state: PresalesState
+): Promise<Partial<PresalesState>> {
+  if (!state.analysis) {
+    return {
+      error: '缺少需求分析结果，无法进行功能拆解',
+      currentStep: 'breakdown',
+    }
+  }
+  try {
+    let referenceSection = ''
+    let usedReferenceIds: string[] = []
+    try {
+      const queryText = [
+        state.analysis.projectType,
+        ...(state.analysis.keyFeatures || []),
+      ]
+        .filter(Boolean)
+        .join(' ')
+      const references = await getReferencesForBreakdown(queryText, 10)
+      if (references.length > 0) {
+        referenceSection = formatReferencesForPrompt(references)
+        usedReferenceIds = references.map((r) => r.id)
+        console.log('[Agent] 注入估算参考:', {
+          queryText: queryText.substring(0, 100),
+          referenceCount: references.length,
+        })
+      }
+    } catch (refError) {
+      console.warn('[Agent] 获取估算参考失败，继续执行:', refError)
+    }
+    const prompt = BREAKDOWN_PROMPT
+      .replace('{projectDescription}', state.projectDescription || '未提供项目描述')
+      .replace('{rawRequirement}', state.rawRequirement)
+      .replace('{referenceSection}', referenceSection)
+    const result = await generateText({
+      model: defaultModel,
+==================== 第 056 页结束 ====================
+==================== 第 057 页开始 ====================
+      maxOutputTokens: 8192,
+      temperature: 0.3,
+      system: `你是一个专业的软件项目工时评估专家。严格按照要求的 CSV 格式输出，不要输出任何解释文字。`,
+      prompt,
+      experimental_telemetry: createTelemetryConfig('workflow-breakdown', {
+        projectId: state.projectId,
+        requirementId: state.requirementId,
+      }),
+    })
+    console.log('[Agent] generateText 返回结果:', {
+      textLength: result.text?.length,
+      finishReason: result.finishReason,
+      usage: result.usage,
+    })
+    if (result.text) {
+      console.log('[Agent] 模型 CSV 输出 (前2000字符):', result.text.substring(0, 2000))
+    }
+    if (!result.text) {
+      return {
+        error: '功能拆解未返回有效结果',
+        currentStep: 'breakdown',
+      }
+    }
+    const parsed = parseBreakdownCSV(result.text)
+    if (parsed.modules.length === 0) {
+      console.error('[Agent] CSV 解析结果为空，原始文本:', result.text)
+      return {
+        error: '功能拆解 CSV 解析失败，未找到功能模块',
+        currentStep: 'breakdown',
+      }
+    }
+    const functions = parsed.modules
+    const identifiedRoles = parsed.identifiedRoles
+    const additionalWork = parsed.additionalWork
+    const moduleTotalDays = functions.reduce(
+      (sum, f) => sum + f.roleEstimates.reduce((s, r) => s + r.days, 0),
+      0
+    )
+    const additionalTotalDays = additionalWork.reduce((sum, w) => sum + w.days, 0)
+    const totalDays = moduleTotalDays + additionalTotalDays
+    console.log('[Agent] 功能拆解完成:', {
+      modulesCount: functions.length,
+      rolesCount: identifiedRoles.length,
+      additionalWorkCount: additionalWork.length,
+      moduleTotalDays,
+      additionalTotalDays,
+      totalDays,
+    })
+==================== 第 057 页结束 ====================
+==================== 第 058 页开始 ====================
+    if (usedReferenceIds.length > 0) {
+      incrementReferenceUsage(usedReferenceIds).catch(() => {})
+    }
+    return {
+      functions,
+      identifiedRoles,
+      additionalWork,
+      currentStep: 'estimate',
+      error: null,
+    }
+  } catch (error) {
+    console.error('[Agent] 功能拆解失败:', error)
+    return {
+      error: `功能拆解失败: ${error instanceof Error ? error.message : '未知错误'}`,
+      currentStep: 'breakdown',
+    }
+  }
+}
+文件结束 lib/agents/nodes/breakdown.ts
+文件开始 lib/agents/nodes/estimate.ts
+import { generateText, Output } from 'ai'
+import { z } from 'zod'
+import { defaultModel } from '@/lib/ai/config'
+import { createTelemetryConfig } from '@/lib/observability/langfuse'
+import type { PresalesState, AgentEffortEstimation } from '../state'
+const bufferEstimationSchema = z.object({
+  bufferCoefficient: z.number().min(1.0).max(2.5).describe('缓冲系数（1.2-2.0之间），根据项目风险程度确定'),
+  bufferReason: z.string().describe('缓冲系数的评估依据说明'),
+})
+const BUFFER_ESTIMATION_PROMPT = `你是一位经验丰富的项目经理，擅长评估项目风险和确定合理的工时缓冲。
+根据以下项目信息，评估合理的缓冲系数。
+**缓冲系数参考标准**：
+| 缓冲系数 | 适用场景 |
+|---------|---------|
+| 1.2 | 常规功能，需求明确，团队熟悉技术栈 |
+| 1.3 | 复杂功能，有一定不确定性，需要技术攻关 |
+| 1.5 | 第三方对接较多，使用新技术，需求可能变更 |
+| 2.0 | 探索性项目，需求不明确，技术方案未定 |
+**风险评估因素**：
+1. 需求明确程度
+2. 技术栈熟悉度
+3. 第三方系统对接复杂度
+4. 团队协作复杂度
+5. 行业合规要求（金融、医疗等需要更高缓冲）
+6. 项目周期压力
+---
+**项目描述**：
+{projectDescription}
+==================== 第 058 页结束 ====================
+==================== 第 059 页开始 ====================
+---
+**项目信息**：
+- 项目类型：{projectType}
+- 技术栈：{techStack}
+- 风险因素：{risks}
+- 非功能性需求：{nonFunctionalRequirements}
+**工时统计**：
+- 功能模块数量：{moduleCount}
+- 识别的角色数量：{rolesCount}
+- 功能模块总人天：{moduleTotalDays}
+- 额外工作总人天：{additionalTotalDays}
+- 基础总人天：{baseTotalDays}
+---
+请评估合理的缓冲系数（1.2-2.0之间），并说明评估依据。`
+export async function estimateNode(
+  state: PresalesState
+): Promise<Partial<PresalesState>> {
+  if (!state.functions || state.functions.length === 0) {
+    return {
+      error: '缺少功能模块列表，无法进行工时评估',
+      currentStep: 'estimate',
+    }
+  }
+  if (!state.analysis) {
+    return {
+      error: '缺少需求分析结果，无法进行工时评估',
+      currentStep: 'estimate',
+    }
+  }
+  if (!state.identifiedRoles || state.identifiedRoles.length === 0) {
+    return {
+      error: '缺少角色识别结果，无法进行工时评估',
+      currentStep: 'estimate',
+    }
+  }
+  try {
+    const roleDaysMap = new Map<string, number>()
+    for (const fn of state.functions) {
+      for (const re of fn.roleEstimates) {
+        const current = roleDaysMap.get(re.role) || 0
+        roleDaysMap.set(re.role, current + re.days)
+      }
+    }
+    for (const work of state.additionalWork) {
+      const daysPerRole = work.days / work.assignedRoles.length
+      for (const role of work.assignedRoles) {
+        const current = roleDaysMap.get(role) || 0
+        roleDaysMap.set(role, current + daysPerRole)
+==================== 第 059 页结束 ====================
+==================== 第 060 页开始 ====================
+      }
+    }
+    const moduleTotalDays = state.functions.reduce(
+      (sum, f) => sum + f.roleEstimates.reduce((s, r) => s + r.days, 0),
+      0
+    )
+    const additionalTotalDays = state.additionalWork.reduce((sum, w) => sum + w.days, 0)
+    const baseTotalDays = moduleTotalDays + additionalTotalDays
+    const nfr = state.analysis.nonFunctionalRequirements
+    const nfrDescription = [
+      nfr.performance ? `性能要求: ${nfr.performance}` : null,
+      nfr.security ? `安全要求: ${nfr.security}` : null,
+      nfr.scalability ? `扩展性要求: ${nfr.scalability}` : null,
+    ].filter(Boolean).join('; ') || '无特殊要求'
+    const prompt = BUFFER_ESTIMATION_PROMPT
+      .replace('{projectDescription}', state.projectDescription || '未提供项目描述')
+      .replace('{projectType}', state.analysis.projectType)
+      .replace('{techStack}', state.analysis.techStack.join(', '))
+      .replace('{risks}', state.analysis.risks.join(', ') || '无明显风险')
+      .replace('{nonFunctionalRequirements}', nfrDescription)
+      .replace('{moduleCount}', String(state.functions.length))
+      .replace('{rolesCount}', String(state.identifiedRoles.length))
+      .replace('{moduleTotalDays}', String(Math.round(moduleTotalDays * 10) / 10))
+      .replace('{additionalTotalDays}', String(Math.round(additionalTotalDays * 10) / 10))
+      .replace('{baseTotalDays}', String(Math.round(baseTotalDays * 10) / 10))
+    const { output } = await generateText({
+      model: defaultModel,
+      output: Output.object({
+        schema: bufferEstimationSchema,
+      }),
+      prompt,
+      experimental_telemetry: createTelemetryConfig('workflow-estimate', {
+        projectId: state.projectId,
+        requirementId: state.requirementId,
+        modulesCount: state.functions.length,
+        baseTotalDays,
+      }),
+    })
+    if (!output) {
+      return {
+        error: '缓冲系数评估未返回有效结果',
+        currentStep: 'estimate',
+      }
+    }
+    const roleSummary = Array.from(roleDaysMap.entries()).map(([role, totalDays]) => {
+      const identifiedRole = state.identifiedRoles.find((r) => r.role === role)
+      return {
+        role,
+==================== 第 060 页结束 ====================
+==================== 第 061 页开始 ====================
+        totalDays: Math.round(totalDays * 10) / 10,
+        headcount: identifiedRole?.headcount || 1,
+      }
+    })
+    const estimation: AgentEffortEstimation = {
+      identifiedRoles: state.identifiedRoles,
+      additionalWork: state.additionalWork,
+      roleSummary,
+      bufferCoefficient: output.bufferCoefficient,
+      bufferReason: output.bufferReason,
+    }
+    console.log('[Agent] 工时评估完成:', {
+      baseTotalDays,
+      bufferCoefficient: output.bufferCoefficient,
+      bufferedTotalDays: Math.round(baseTotalDays * output.bufferCoefficient * 10) / 10,
+      rolesCount: roleSummary.length,
+    })
+    return {
+      estimation,
+      currentStep: 'calculate',
+      error: null,
+    }
+  } catch (error) {
+    console.error('[Agent] 工时评估失败:', error)
+    return {
+      error: `工时评估失败: ${error instanceof Error ? error.message : '未知错误'}`,
+      currentStep: 'estimate',
+    }
+  }
+}
+文件结束 lib/agents/nodes/estimate.ts
+文件开始 lib/agents/nodes/calculate.ts
+import { DEFAULT_CONFIG } from '@/constants'
+import type { PresalesState, AgentCostEstimate } from '../state'
+function roundToDecimal(value: number, decimals: number): number {
+  const factor = Math.pow(10, decimals)
+  return Math.round(value * factor) / factor
+}
+export async function calculateNode(
+  state: PresalesState
+): Promise<Partial<PresalesState>> {
+  if (!state.functions || state.functions.length === 0) {
+    return {
+      error: '缺少功能模块列表，无法进行成本计算',
+      currentStep: 'calculate',
+    }
+  }
+  if (!state.estimation) {
+==================== 第 061 页结束 ====================
+==================== 第 062 页开始 ====================
+    return {
+      error: '缺少工时评估结果，无法进行成本计算',
+      currentStep: 'calculate',
+    }
+  }
+  try {
+    const { roleSummary, additionalWork, bufferCoefficient } = state.estimation
+    const laborCostPerDay = state.systemConfig?.laborCostPerDay || DEFAULT_CONFIG.LABOR_COST_PER_DAY
+    const moduleTotalDays = state.functions.reduce(
+      (sum, f) => sum + f.roleEstimates.reduce((s, r) => s + r.days, 0),
+      0
+    )
+    const additionalTotalDays = additionalWork.reduce((sum, w) => sum + w.days, 0)
+    const baseDays = moduleTotalDays + additionalTotalDays
+    const bufferedDays = roundToDecimal(baseDays * bufferCoefficient, 1)
+    console.log('[Agent] 成本计算:', {
+      moduleTotalDays,
+      additionalTotalDays,
+      baseDays,
+      bufferCoefficient,
+      bufferedDays,
+      laborCostPerDay,
+    })
+    const roleBreakdown = roleSummary.map((r) => ({
+      role: r.role,
+      days: roundToDecimal(r.totalDays * bufferCoefficient, 1),
+      cost: Math.round(r.totalDays * bufferCoefficient * laborCostPerDay),
+      headcount: r.headcount,
+    }))
+    const additionalWorkBreakdown = additionalWork.map((w) => ({
+      workItem: w.workItem,
+      days: roundToDecimal(w.days * bufferCoefficient, 1),
+      cost: Math.round(w.days * bufferCoefficient * laborCostPerDay),
+    }))
+    const laborCost = Math.round(bufferedDays * laborCostPerDay)
+    const thirdPartyServices: { name: string; cost: number }[] = []
+    const teamSize = roleSummary.reduce((sum, r) => sum + r.headcount, 0)
+    const maxRoleDays = Math.max(...roleSummary.map((r) => r.totalDays / r.headcount))
+    const estimatedDuration = Math.ceil(maxRoleDays * bufferCoefficient)
+    if (teamSize >= 3) {
+      thirdPartyServices.push({
+        name: '云服务器（开发测试环境）',
+        cost: Math.ceil(estimatedDuration / 30) * 2000,
+      })
+    }
+    if (baseDays > 100) {
+      thirdPartyServices.push({
+        name: 'CI/CD 工具服务',
+==================== 第 062 页结束 ====================
+==================== 第 063 页开始 ====================
+        cost: Math.ceil(estimatedDuration / 30) * 500,
+      })
+    }
+    const serviceCost = thirdPartyServices.reduce((sum, s) => sum + s.cost, 0)
+    const infrastructureCost = 0
+    const totalCost = laborCost + serviceCost + infrastructureCost
+    const cost: AgentCostEstimate = {
+      baseDays: roundToDecimal(baseDays, 1),
+      bufferedDays,
+      bufferCoefficient,
+      roleBreakdown,
+      additionalWorkBreakdown,
+      laborCost,
+      serviceCost,
+      infrastructureCost,
+      totalCost,
+      thirdPartyServices,
+    }
+    console.log('[Agent] 成本计算完成:', {
+      baseDays,
+      bufferedDays,
+      laborCost,
+      serviceCost,
+      totalCost,
+      rolesCount: roleBreakdown.length,
+    })
+    return {
+      cost,
+      currentStep: 'complete',
+      isComplete: true,
+      error: null,
+    }
+  } catch (error) {
+    console.error('[Agent] 成本计算失败:', error)
+    return {
+      error: `成本计算失败: ${error instanceof Error ? error.message : '未知错误'}`,
+      currentStep: 'calculate',
+    }
+  }
+}
+export function formatCurrency(amount: number, currency = 'CNY'): string {
+  if (currency === 'CNY') {
+    return `¥${amount.toLocaleString('zh-CN')}`
+  }
+  return `$${amount.toLocaleString('en-US')}`
+}
+export function hoursToWorkDays(hours: number): number {
+  return Math.ceil(hours / DEFAULT_CONFIG.WORKING_HOURS_PER_DAY)
+==================== 第 063 页结束 ====================
+==================== 第 064 页开始 ====================
+}
+文件结束 lib/agents/nodes/calculate.ts
+文件开始 lib/ai/chat-tools.ts
+import { tool } from 'ai'
+import { z } from 'zod'
+import { createClient } from '@/lib/supabase/server'
+import type { ParsedRequirement } from '@/types'
+interface ChatToolsContext {
+  projectId: string
+  requirementId: string
+}
+export function createChatTools(context: ChatToolsContext) {
+  const { projectId, requirementId } = context
+  const updateRequirement = tool({
+    description: '更新项目的原始需求文本内容。当用户提供了新的需求描述或想要修改现有需求时使用此工具。',
+    inputSchema: z.object({
+      content: z.string().describe('新的需求内容文本'),
+    }),
+    execute: async ({ content }) => {
+      const supabase = await createClient()
+      const { error } = await supabase
+        .from('requirements')
+        .update({ raw_content: content.trim() })
+        .eq('id', requirementId)
+      if (error) {
+        return { success: false, error: error.message }
+      }
+      return { success: true, message: '需求内容已更新' }
+    },
+  })
+  const appendRequirement = tool({
+    description: '在现有需求内容后追加新内容，不覆盖原有内容。当用户补充新的需求细节时使用。',
+    inputSchema: z.object({
+      content: z.string().describe('要追加的需求内容'),
+    }),
+    execute: async ({ content }) => {
+      const supabase = await createClient()
+      const { data: requirement } = await supabase
+        .from('requirements')
+        .select('raw_content')
+        .eq('id', requirementId)
+        .single()
+      const existingContent = requirement?.raw_content || ''
+      const newContent = existingContent + '\n\n---\n\n' + content.trim()
+      const { error } = await supabase
+        .from('requirements')
+        .update({ raw_content: newContent })
+        .eq('id', requirementId)
+==================== 第 064 页结束 ====================
+==================== 第 065 页开始 ====================
+      if (error) {
+        return { success: false, error: error.message }
+      }
+      return { success: true, message: '需求内容已追加' }
+    },
+  })
+  const updateParsedRequirement = tool({
+    description: '更新需求的结构化分析结果，包括项目类型、业务目标、核心功能、技术栈、非功能性需求和风险点。',
+    inputSchema: z.object({
+      projectType: z.string().optional().describe('项目类型，如：Web应用、移动应用、企业系统等'),
+      businessGoals: z.array(z.string()).optional().describe('业务目标列表'),
+      keyFeatures: z.array(z.string()).optional().describe('核心功能列表'),
+      techStack: z.array(z.string()).optional().describe('技术栈列表'),
+      nonFunctionalRequirements: z.object({
+        performance: z.string().optional().describe('性能要求'),
+        security: z.string().optional().describe('安全要求'),
+        scalability: z.string().optional().describe('可扩展性要求'),
+      }).optional().describe('非功能性需求'),
+      risks: z.array(z.string()).optional().describe('风险点列表'),
+    }),
+    execute: async (params) => {
+      const supabase = await createClient()
+      const { data: requirement } = await supabase
+        .from('requirements')
+        .select('parsed_content')
+        .eq('id', requirementId)
+        .single()
+      const existingParsed = (requirement?.parsed_content || {}) as ParsedRequirement
+      const updatedParsed: ParsedRequirement = {
+        projectType: params.projectType ?? existingParsed.projectType ?? '',
+        businessGoals: params.businessGoals ?? existingParsed.businessGoals ?? [],
+        keyFeatures: params.keyFeatures ?? existingParsed.keyFeatures ?? [],
+        techStack: params.techStack ?? existingParsed.techStack ?? [],
+        nonFunctionalRequirements: {
+          ...existingParsed.nonFunctionalRequirements,
+          ...params.nonFunctionalRequirements,
+        },
+        risks: params.risks ?? existingParsed.risks ?? [],
+      }
+      const { error } = await supabase
+        .from('requirements')
+        .update({ parsed_content: updatedParsed })
+        .eq('id', requirementId)
+      if (error) {
+        return { success: false, error: error.message }
+      }
+      return { success: true, message: '需求分析结果已更新', data: updatedParsed }
+    },
+==================== 第 065 页结束 ====================
+==================== 第 066 页开始 ====================
+  })
+  const addFunctionModule = tool({
+    description: '添加新的功能模块到项目中。用于将用户确认的功能点添加到估算列表。',
+    inputSchema: z.object({
+      moduleName: z.string().describe('模块名称，如：用户管理、订单系统'),
+      functionName: z.string().describe('功能名称，如：用户登录、订单创建'),
+      description: z.string().optional().describe('功能描述'),
+      difficultyLevel: z.enum(['simple', 'medium', 'complex', 'very_complex']).describe('难度级别：simple(简单)、medium(中等)、complex(复杂)、very_complex(非常复杂)'),
+      estimatedHours: z.number().describe('预估工时（小时）'),
+    }),
+    execute: async ({ moduleName, functionName, description, difficultyLevel, estimatedHours }) => {
+      const supabase = await createClient()
+      const { data, error } = await supabase
+        .from('function_modules')
+        .insert({
+          project_id: projectId,
+          module_name: moduleName.trim(),
+          function_name: functionName.trim(),
+          description: description?.trim() || null,
+          difficulty_level: difficultyLevel,
+          estimated_hours: estimatedHours,
+        })
+        .select()
+        .single()
+      if (error) {
+        return { success: false, error: error.message }
+      }
+      return { success: true, message: `功能模块 "${functionName}" 已添加`, data }
+    },
+  })
+  const addFunctionModulesBatch = tool({
+    description: '批量添加多个功能模块到项目中。当需要一次性添加多个功能时使用。',
+    inputSchema: z.object({
+      modules: z.array(z.object({
+        moduleName: z.string().describe('模块名称'),
+        functionName: z.string().describe('功能名称'),
+        description: z.string().optional().describe('功能描述'),
+        difficultyLevel: z.enum(['simple', 'medium', 'complex', 'very_complex']).describe('难度级别'),
+        estimatedHours: z.number().describe('预估工时（小时）'),
+      })).describe('要添加的功能模块列表'),
+    }),
+    execute: async ({ modules }) => {
+      const supabase = await createClient()
+      const insertData = modules.map(m => ({
+        project_id: projectId,
+        module_name: m.moduleName.trim(),
+        function_name: m.functionName.trim(),
+        description: m.description?.trim() || null,
+==================== 第 066 页结束 ====================
+==================== 第 067 页开始 ====================
+        difficulty_level: m.difficultyLevel,
+        estimated_hours: m.estimatedHours,
+      }))
+      const { data, error } = await supabase
+        .from('function_modules')
+        .insert(insertData)
+        .select()
+      if (error) {
+        return { success: false, error: error.message }
+      }
+      return { success: true, message: `已添加 ${modules.length} 个功能模块`, data }
+    },
+  })
+  const updateFunctionHours = tool({
+    description: '更新指定功能模块的预估工时。',
+    inputSchema: z.object({
+      functionId: z.string().describe('功能模块ID'),
+      hours: z.number().describe('新的预估工时（小时）'),
+    }),
+    execute: async ({ functionId, hours }) => {
+      const supabase = await createClient()
+      const { data, error } = await supabase
+        .from('function_modules')
+        .update({ estimated_hours: hours })
+        .eq('id', functionId)
+        .eq('project_id', projectId)
+        .select()
+        .single()
+      if (error) {
+        return { success: false, error: error.message }
+      }
+      return { success: true, message: `工时已更新为 ${hours} 小时`, data }
+    },
+  })
+  const updateFunctionDifficulty = tool({
+    description: '更新指定功能模块的难度级别。',
+    inputSchema: z.object({
+      functionId: z.string().describe('功能模块ID'),
+      difficultyLevel: z.enum(['simple', 'medium', 'complex', 'very_complex']).describe('新的难度级别'),
+    }),
+    execute: async ({ functionId, difficultyLevel }) => {
+      const supabase = await createClient()
+      const { data, error } = await supabase
+        .from('function_modules')
+        .update({ difficulty_level: difficultyLevel })
+        .eq('id', functionId)
+        .eq('project_id', projectId)
+        .select()
+==================== 第 067 页结束 ====================
+==================== 第 068 页开始 ====================
+        .single()
+      if (error) {
+        return { success: false, error: error.message }
+      }
+      const difficultyLabels: Record<string, string> = {
+        simple: '简单',
+        medium: '中等',
+        complex: '复杂',
+        very_complex: '非常复杂',
+      }
+      return { success: true, message: `难度已更新为 ${difficultyLabels[difficultyLevel]}`, data }
+    },
+  })
+  const deleteFunctionModule = tool({
+    description: '删除指定的功能模块。当用户决定移除某个功能时使用。',
+    inputSchema: z.object({
+      functionId: z.string().describe('要删除的功能模块ID'),
+    }),
+    execute: async ({ functionId }) => {
+      const supabase = await createClient()
+      const { data: fn } = await supabase
+        .from('function_modules')
+        .select('function_name')
+        .eq('id', functionId)
+        .eq('project_id', projectId)
+        .single()
+      const { error } = await supabase
+        .from('function_modules')
+        .delete()
+        .eq('id', functionId)
+        .eq('project_id', projectId)
+      if (error) {
+        return { success: false, error: error.message }
+      }
+      return { success: true, message: `功能模块 "${fn?.function_name || functionId}" 已删除` }
+    },
+  })
+  const addFromLibrary = tool({
+    description: '从标准功能库中添加功能到项目。可以使用功能库中的标准工时或自定义工时。',
+    inputSchema: z.object({
+      libraryItemId: z.string().describe('功能库项目ID'),
+      customHours: z.number().optional().describe('自定义工时（可选，不填则使用标准工时）'),
+      customDifficulty: z.enum(['simple', 'medium', 'complex', 'very_complex']).optional().describe('自定义难度（可选）'),
+    }),
+    execute: async ({ libraryItemId, customHours, customDifficulty }) => {
+      const supabase = await createClient()
+      const { data: libraryItem } = await supabase
+        .from('function_library')
+==================== 第 068 页结束 ====================
+==================== 第 069 页开始 ====================
+        .select('*')
+        .eq('id', libraryItemId)
+        .single()
+      if (!libraryItem) {
+        return { success: false, error: '功能库项目不存在' }
+      }
+      const { data, error } = await supabase
+        .from('function_modules')
+        .insert({
+          project_id: projectId,
+          module_name: libraryItem.category,
+          function_name: libraryItem.function_name,
+          description: libraryItem.description,
+          difficulty_level: customDifficulty || 'medium',
+          estimated_hours: customHours ?? libraryItem.standard_hours,
+        })
+        .select()
+        .single()
+      if (error) {
+        return { success: false, error: error.message }
+      }
+      return { success: true, message: `已从功能库添加 "${libraryItem.function_name}"`, data }
+    },
+  })
+  const updateCostParameters = tool({
+    description: '更新成本估算的计算参数，如风险缓冲比例、服务成本、基础设施成本等。',
+    inputSchema: z.object({
+      bufferPercentage: z.number().optional().describe('风险缓冲比例（%），如 15 表示 15%'),
+      serviceCost: z.number().optional().describe('第三方服务成本（元）'),
+      infrastructureCost: z.number().optional().describe('基础设施成本（元）'),
+    }),
+    execute: async (params) => {
+      const supabase = await createClient()
+      const { data: existingCost } = await supabase
+        .from('cost_estimates')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+      const updateData: Record<string, number> = {}
+      if (params.serviceCost !== undefined) {
+        updateData.service_cost = params.serviceCost
+      }
+      if (params.infrastructureCost !== undefined) {
+        updateData.infrastructure_cost = params.infrastructureCost
+      }
+      if (params.bufferPercentage !== undefined) {
+==================== 第 069 页结束 ====================
+==================== 第 070 页开始 ====================
+        updateData.buffer_percentage = params.bufferPercentage
+      }
+      if (existingCost) {
+        const { error } = await supabase
+          .from('cost_estimates')
+          .update(updateData)
+          .eq('id', existingCost.id)
+        if (error) {
+          return { success: false, error: error.message }
+        }
+      } else {
+        const { error } = await supabase
+          .from('cost_estimates')
+          .insert({
+            project_id: projectId,
+            labor_cost: 0,
+            service_cost: params.serviceCost || 0,
+            infrastructure_cost: params.infrastructureCost || 0,
+            buffer_percentage: params.bufferPercentage || 15,
+            total_cost: 0,
+            breakdown: {},
+          })
+        if (error) {
+          return { success: false, error: error.message }
+        }
+      }
+      return { success: true, message: '成本参数已更新' }
+    },
+  })
+  const recalculateCost = tool({
+    description: '基于当前的功能模块列表重新计算项目总成本。在添加或修改功能后调用此工具更新成本。使用加权工时计算（根据难度级别应用不同倍数）。可选参数允许用户自定义成本配置，未指定时从系统配置读取。',
+    inputSchema: z.object({
+      laborCostPerDay: z.number().optional().describe('人天成本（元），不指定则使用系统配置'),
+      riskBufferPercentage: z.number().optional().describe('风险缓冲比例（%），不指定则使用系统配置'),
+      serviceCost: z.number().optional().describe('第三方服务成本（元），不指定则使用现有值'),
+      infrastructureCost: z.number().optional().describe('基础设施成本（元），不指定则使用现有值'),
+    }),
+    execute: async (params) => {
+      const supabase = await createClient()
+      const { data: functions } = await supabase
+        .from('function_modules')
+        .select('estimated_hours, difficulty_level')
+        .eq('project_id', projectId)
+      if (!functions || functions.length === 0) {
+        return { success: false, error: '没有功能模块，无法计算成本' }
+      }
+      const { data: config } = await supabase
+        .from('system_config')
+==================== 第 070 页结束 ====================
+==================== 第 071 页开始 ====================
+        .select('*')
+        .limit(1)
+        .single()
+      const { data: existingCost } = await supabase
+        .from('cost_estimates')
+        .select('service_cost, infrastructure_cost, buffer_percentage, breakdown')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+      const laborCostPerDay = params.laborCostPerDay
+        ?? config?.default_labor_cost_per_day
+        ?? 1500
+      const bufferPercentage = params.riskBufferPercentage
+        ?? existingCost?.buffer_percentage
+        ?? config?.default_risk_buffer_percentage
+        ?? 15
+      const serviceCost = params.serviceCost
+        ?? existingCost?.service_cost
+        ?? 0
+      const infrastructureCost = params.infrastructureCost
+        ?? existingCost?.infrastructure_cost
+        ?? 0
+      const workingHoursPerDay = 8
+      let totalHours = 0
+      for (const fn of functions) {
+        totalHours += Number(fn.estimated_hours)
+      }
+      const totalDays = Math.round((totalHours / workingHoursPerDay) * 10) / 10
+      const laborCost = Math.round(totalDays * laborCostPerDay)
+      const baseCost = laborCost + serviceCost + infrastructureCost
+      const buffer = Math.round(baseCost * (bufferPercentage / 100))
+      const totalCost = baseCost + buffer
+      const costData = {
+        project_id: projectId,
+        labor_cost: laborCost,
+        service_cost: serviceCost,
+        infrastructure_cost: infrastructureCost,
+        buffer_percentage: bufferPercentage,
+        total_cost: totalCost,
+        breakdown: {
+          totalHours,
+          totalDays,
+          laborCostPerDay,
+          buffer,
+        },
+      }
+      if (existingCost) {
+==================== 第 071 页结束 ====================
+==================== 第 072 页开始 ====================
+        await supabase
+          .from('cost_estimates')
+          .update(costData)
+          .eq('project_id', projectId)
+      } else {
+        await supabase
+          .from('cost_estimates')
+          .insert(costData)
+      }
+      return {
+        success: true,
+        message: '成本已重新计算',
+        data: {
+          totalHours,
+          totalDays,
+          laborCostPerDay,
+          laborCost,
+          serviceCost,
+          infrastructureCost,
+          bufferPercentage,
+          buffer,
+          totalCost,
+        },
+      }
+    },
+  })
+  const updateProjectDescription = tool({
+    description: '更新项目的描述信息。',
+    inputSchema: z.object({
+      description: z.string().describe('新的项目描述'),
+    }),
+    execute: async ({ description }) => {
+      const supabase = await createClient()
+      const { error } = await supabase
+        .from('projects')
+        .update({ description: description.trim() })
+        .eq('id', projectId)
+      if (error) {
+        return { success: false, error: error.message }
+      }
+      return { success: true, message: '项目描述已更新' }
+    },
+  })
+  const updateProjectIndustry = tool({
+    description: '更新项目所属行业。',
+    inputSchema: z.object({
+      industry: z.string().describe('行业名称，如：金融、电商、教育、医疗、制造等'),
+    }),
+==================== 第 072 页结束 ====================
+==================== 第 073 页开始 ====================
+    execute: async ({ industry }) => {
+      const supabase = await createClient()
+      const { error } = await supabase
+        .from('projects')
+        .update({ industry: industry.trim() })
+        .eq('id', projectId)
+      if (error) {
+        return { success: false, error: error.message }
+      }
+      return { success: true, message: `项目行业已更新为 "${industry}"` }
+    },
+  })
+  const getFunctionModules = tool({
+    description: '获取当前项目的所有功能模块列表。用于查看当前已添加的功能和工时。',
+    inputSchema: z.object({}),
+    execute: async () => {
+      const supabase = await createClient()
+      const { data, error } = await supabase
+        .from('function_modules')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('module_name', { ascending: true })
+        .order('function_name', { ascending: true })
+      if (error) {
+        return { success: false, error: error.message }
+      }
+      const totalHours = data?.reduce((sum, f) => sum + Number(f.estimated_hours), 0) || 0
+      return {
+        success: true,
+        data: {
+          modules: data || [],
+          count: data?.length || 0,
+          totalHours,
+        },
+      }
+    },
+  })
+  const getCostSummary = tool({
+    description: '获取当前项目的成本估算汇总信息。',
+    inputSchema: z.object({}),
+    execute: async () => {
+      const supabase = await createClient()
+      const { data: cost } = await supabase
+        .from('cost_estimates')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+==================== 第 073 页结束 ====================
+==================== 第 074 页开始 ====================
+        .single()
+      if (!cost) {
+        return { success: true, data: null, message: '暂无成本估算数据' }
+      }
+      return {
+        success: true,
+        data: {
+          laborCost: cost.labor_cost,
+          serviceCost: cost.service_cost,
+          infrastructureCost: cost.infrastructure_cost,
+          bufferPercentage: cost.buffer_percentage,
+          totalCost: cost.total_cost,
+          breakdown: cost.breakdown,
+        },
+      }
+    },
+  })
+  const searchFunctionLibrary = tool({
+    description: '搜索标准功能库，查找可复用的功能模块及其标准工时。帮助用户找到已有的标准功能估算。',
+    inputSchema: z.object({
+      keyword: z.string().describe('搜索关键词'),
+      category: z.string().optional().describe('功能分类（可选）'),
+    }),
+    execute: async ({ keyword, category }) => {
+      const supabase = await createClient()
+      let query = supabase
+        .from('function_library')
+        .select('*')
+        .ilike('function_name', `%${keyword}%`)
+        .order('category', { ascending: true })
+        .limit(10)
+      if (category) {
+        query = query.eq('category', category)
+      }
+      const { data, error } = await query
+      if (error) {
+        return { success: false, error: error.message }
+      }
+      return {
+        success: true,
+        data: data || [],
+        count: data?.length || 0,
+      }
+    },
+  })
+  const getProjectSummary = tool({
+    description: '获取项目的整体汇总信息，包括功能模块数、总工时、成本等。用于给用户展示项目全貌。',
+    inputSchema: z.object({}),
+==================== 第 074 页结束 ====================
+==================== 第 075 页开始 ====================
+    execute: async () => {
+      const supabase = await createClient()
+      const { data: project } = await supabase
+        .from('projects')
+        .select('name, description, industry, status')
+        .eq('id', projectId)
+        .single()
+      const { data: functions } = await supabase
+        .from('function_modules')
+        .select('estimated_hours, difficulty_level')
+        .eq('project_id', projectId)
+      const { data: cost } = await supabase
+        .from('cost_estimates')
+        .select('total_cost, labor_cost, buffer_percentage')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+      let totalHours = 0
+      functions?.forEach(f => {
+        totalHours += Number(f.estimated_hours)
+      })
+      return {
+        success: true,
+        data: {
+          project: project || null,
+          totalModules: functions?.length || 0,
+          totalHours,
+          totalDays: Math.round((totalHours / 8) * 10) / 10,
+          totalCost: cost?.total_cost || 0,
+          laborCost: cost?.labor_cost || 0,
+          bufferPercentage: cost?.buffer_percentage || 15,
+        },
+      }
+    },
+  })
+  const getSystemConfig = tool({
+    description: '获取系统成本配置信息，包括人天成本、默认风险缓冲比例、货币单位等。这是成本估算的核心配置数据源，在进行成本计算或向用户解释成本时应先调用此工具获取最新配置。',
+    inputSchema: z.object({}),
+    execute: async () => {
+      const supabase = await createClient()
+      const { data: config, error } = await supabase
+        .from('system_config')
+        .select('*')
+        .limit(1)
+        .single()
+      const defaultConfig = {
+        laborCostPerDay: 1500,
+==================== 第 075 页结束 ====================
+==================== 第 076 页开始 ====================
+        riskBufferPercentage: 15,
+        currency: 'CNY',
+        workingHoursPerDay: 8,
+      }
+      if (error || !config) {
+        return {
+          success: true,
+          message: '使用默认配置',
+          data: defaultConfig,
+        }
+      }
+      return {
+        success: true,
+        data: {
+          laborCostPerDay: config.default_labor_cost_per_day || defaultConfig.laborCostPerDay,
+          riskBufferPercentage: config.default_risk_buffer_percentage || defaultConfig.riskBufferPercentage,
+          currency: config.currency || defaultConfig.currency,
+          workingHoursPerDay: defaultConfig.workingHoursPerDay,
+        },
+      }
+    },
+  })
+  return {
+    updateRequirement,
+    appendRequirement,
+    updateParsedRequirement,
+    addFunctionModule,
+    addFunctionModulesBatch,
+    updateFunctionHours,
+    updateFunctionDifficulty,
+    deleteFunctionModule,
+    addFromLibrary,
+    updateCostParameters,
+    recalculateCost,
+    updateProjectDescription,
+    updateProjectIndustry,
+    getFunctionModules,
+    getCostSummary,
+    searchFunctionLibrary,
+    getProjectSummary,
+    getSystemConfig,
+  }
+}
+export type ChatTools = ReturnType<typeof createChatTools>
+export type ChatToolName = keyof ChatTools
+文件结束 lib/ai/chat-tools.ts
+文件开始 lib/ai/elicitation/tools.ts
+import { tool } from 'ai'
+==================== 第 076 页结束 ====================
+==================== 第 077 页开始 ====================
+import { z } from 'zod'
+import { createClient } from '@/lib/supabase/server'
+import type { ElicitationCollectedInfo, ElicitationQuestion } from '@/types'
+interface ElicitationToolsContext {
+  projectId: string
+  elicitationSessionId: string
+}
+function deepMergeCollectedInfo(
+  target: ElicitationCollectedInfo,
+  source: Partial<ElicitationCollectedInfo>
+): ElicitationCollectedInfo {
+  const result: ElicitationCollectedInfo = { ...target }
+  for (const key of Object.keys(source) as Array<keyof ElicitationCollectedInfo>) {
+    const sourceValue = source[key]
+    const targetValue = target[key]
+    if (sourceValue === undefined) continue
+    if (Array.isArray(sourceValue) && Array.isArray(targetValue)) {
+      (result as any)[key] = [...new Set([...targetValue, ...sourceValue])]
+    } else if (
+      typeof sourceValue === 'object' &&
+      sourceValue !== null &&
+      typeof targetValue === 'object' &&
+      targetValue !== null &&
+      !Array.isArray(sourceValue)
+    ) {
+      (result as any)[key] = { ...targetValue, ...sourceValue }
+    } else {
+      (result as any)[key] = sourceValue
+    }
+  }
+  return result
+}
+function generateId(): string {
+  return Math.random().toString(36).substring(2, 9)
+}
+export function createElicitationTools(context: ElicitationToolsContext) {
+  const { elicitationSessionId } = context
+  const generateQuestions = tool({
+    description: `生成带选项的结构化问题，用于引导用户完善需求。
+每个问题包含：
+- question: 问题文本
+- description: 可选的补充说明
+- options: 2-4 个选项，每个选项有 label 和可选的 description
+- allowMultiple: 是否允许多选（默认 false）
+- allowCustom: 是否允许用户自定义输入（默认 true）
+- fieldKey: 对应要更新的字段（如 projectType, businessGoals 等）
+注意：
+1. 问题要具体、有针对性
+==================== 第 077 页结束 ====================
+==================== 第 078 页开始 ====================
+2. 选项要互斥（除非 allowMultiple=true）
+3. 选项要覆盖常见情况，用户可以通过"其他"选项自定义输入`,
+    inputSchema: z.object({
+      questions: z.array(z.object({
+        question: z.string().describe('问题文本'),
+        description: z.string().optional().describe('问题的补充说明'),
+        options: z.array(z.object({
+          label: z.string().describe('选项文本'),
+          description: z.string().optional().describe('选项的补充说明'),
+        })).min(2).max(4).describe('2-4个选项'),
+        allowMultiple: z.boolean().optional().describe('是否允许多选'),
+        allowCustom: z.boolean().optional().default(true).describe('是否允许自定义输入'),
+        fieldKey: z.string().optional().describe('对应的字段名'),
+      })).min(1).max(3).describe('1-4个问题'),
+    }),
+    execute: async ({ questions }) => {
+      const questionsWithIds: ElicitationQuestion[] = questions.map(q => ({
+        id: generateId(),
+        question: q.question,
+        description: q.description,
+        options: q.options.map(o => ({
+          id: generateId(),
+          label: o.label,
+          description: o.description,
+        })),
+        allowMultiple: q.allowMultiple,
+        allowCustom: q.allowCustom ?? true,
+        fieldKey: q.fieldKey,
+      }))
+      const supabase = await createClient()
+      await supabase
+        .from('elicitation_sessions')
+        .update({
+          current_questions: questionsWithIds,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', elicitationSessionId)
+      return {
+        success: true,
+        questions: questionsWithIds,
+        message: `已生成 ${questionsWithIds.length} 个问题`,
+      }
+    },
+  })
+  const updateCollectedInfo = tool({
+    description: `更新需求引导过程中收集的信息。从用户回答中提取结构化信息并保存。
+可更新的字段：
+- projectType: 项目类型（如：电商平台、管理系统、移动应用）
+==================== 第 078 页结束 ====================
+==================== 第 079 页开始 ====================
+- projectSummary: 项目概述
+- businessGoals: 业务目标（数组）
+- keyFeatures: 核心功能（数组）
+- outOfScope: 不包含的功能（数组）
+- targetUsers: 目标用户（数组）
+- userVolume: 用户规模
+- useCases: 使用场景（数组）
+- techStack: 技术栈（数组）
+- platforms: 平台（数组，如Web、iOS、Android、小程序）
+- integrations: 第三方集成（数组）
+- nonFunctionalRequirements: 非功能需求对象
+  - performance: 性能要求
+  - security: 安全要求
+  - scalability: 扩展性要求
+  - availability: 可用性要求
+- constraints: 约束条件（数组）
+- risks: 潜在风险（数组）
+- timeline: 时间规划对象
+  - deadline: 期望上线时间
+  - priority: 优先级（urgent/normal/flexible）
+- budget: 预算范围
+注意：只保存用户明确提到的信息，不要推测。`,
+    inputSchema: z.object({
+      projectType: z.string().optional().describe('项目类型'),
+      projectSummary: z.string().optional().describe('项目概述'),
+      businessGoals: z.array(z.string()).optional().describe('业务目标列表'),
+      keyFeatures: z.array(z.string()).optional().describe('核心功能列表'),
+      outOfScope: z.array(z.string()).optional().describe('不包含的功能列表'),
+      targetUsers: z.array(z.string()).optional().describe('目标用户列表'),
+      userVolume: z.string().optional().describe('用户规模'),
+      useCases: z.array(z.string()).optional().describe('使用场景列表'),
+      techStack: z.array(z.string()).optional().describe('技术栈列表'),
+      platforms: z.array(z.string()).optional().describe('平台列表'),
+      integrations: z.array(z.string()).optional().describe('第三方集成列表'),
+      nonFunctionalRequirements: z.object({
+        performance: z.string().optional().describe('性能要求'),
+        security: z.string().optional().describe('安全要求'),
+        scalability: z.string().optional().describe('扩展性要求'),
+        availability: z.string().optional().describe('可用性要求'),
+      }).optional().describe('非功能需求'),
+      constraints: z.array(z.string()).optional().describe('约束条件列表'),
+      risks: z.array(z.string()).optional().describe('潜在风险列表'),
+      timeline: z.object({
+        deadline: z.string().optional().describe('期望上线时间'),
+        priority: z.enum(['urgent', 'normal', 'flexible']).optional().describe('优先级'),
+      }).optional().describe('时间规划'),
+      budget: z.string().optional().describe('预算范围'),
+    }),
+==================== 第 079 页结束 ====================
+==================== 第 080 页开始 ====================
+    execute: async (updates) => {
+      const supabase = await createClient()
+      const { data: session, error: sessionError } = await supabase
+        .from('elicitation_sessions')
+        .select('collected_info, current_round')
+        .eq('id', elicitationSessionId)
+        .single()
+      if (sessionError || !session) {
+        return { success: false, error: '会话不存在或已失效' }
+      }
+      const currentInfo = (session.collected_info || {}) as ElicitationCollectedInfo
+      const cleanUpdates: Partial<ElicitationCollectedInfo> = {}
+      for (const [key, value] of Object.entries(updates)) {
+        if (value !== undefined) {
+          (cleanUpdates as any)[key] = value
+        }
+      }
+      const mergedInfo = deepMergeCollectedInfo(currentInfo, cleanUpdates)
+      mergedInfo._meta = {
+        lastUpdatedRound: session.current_round,
+        confirmedFields: [
+          ...(currentInfo._meta?.confirmedFields || []),
+          ...Object.keys(cleanUpdates).filter(k => k !== '_meta'),
+        ].filter((v, i, a) => a.indexOf(v) === i),
+      }
+      const { error: updateError } = await supabase
+        .from('elicitation_sessions')
+        .update({
+          collected_info: mergedInfo,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', elicitationSessionId)
+      if (updateError) {
+        return { success: false, error: updateError.message }
+      }
+      const updatedFieldNames = Object.keys(cleanUpdates).filter(k => k !== '_meta')
+      return {
+        success: true,
+        message: `已更新: ${updatedFieldNames.join('、')}`,
+        updatedFields: updatedFieldNames,
+      }
+    },
+  })
+  const completeElicitation = tool({
+    description: `完成需求引导会话。当收集到足够的核心信息时调用：
+- 项目类型和概述
+- 业务目标
+- 核心功能（至少2-3个）
+==================== 第 080 页结束 ====================
+==================== 第 081 页开始 ====================
+- 目标用户
+不需要等待所有字段都填充完毕。`,
+    inputSchema: z.object({
+      summary: z.string().describe('对已收集需求信息的简短总结'),
+      confirmComplete: z.boolean().describe('确认完成引导'),
+    }),
+    execute: async ({ summary, confirmComplete }) => {
+      if (!confirmComplete) {
+        return { success: false, message: '未确认完成' }
+      }
+      const supabase = await createClient()
+      const { data: session } = await supabase
+        .from('elicitation_sessions')
+        .select('collected_info, project_id')
+        .eq('id', elicitationSessionId)
+        .single()
+      if (!session) {
+        return { success: false, error: '会话不存在' }
+      }
+      const collectedInfo = (session.collected_info || {}) as ElicitationCollectedInfo
+      const { error: updateError } = await supabase
+        .from('elicitation_sessions')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          completion_summary: summary,
+        })
+        .eq('id', elicitationSessionId)
+      if (updateError) {
+        return { success: false, error: updateError.message }
+      }
+      return {
+        success: true,
+        message: '需求引导已完成，可以进入分析阶段',
+        summary,
+        collectedInfo,
+      }
+    },
+  })
+  return {
+    generateQuestions,
+    updateCollectedInfo,
+    completeElicitation,
+  }
+}
+export type ElicitationTools = ReturnType<typeof createElicitationTools>
+export type ElicitationToolName = keyof ElicitationTools
+==================== 第 081 页结束 ====================
+==================== 第 082 页开始 ====================
+文件结束 lib/ai/elicitation/tools.ts
+文件开始 lib/git/parser.ts
+export type GitPlatform = 'github' | 'gitlab' | 'gitee' | 'unknown'
+export interface ParsedGitUrl {
+  platform: GitPlatform
+  host: string
+  owner: string
+  repo: string
+  branch?: string
+  rawUrl: string
+}
+export interface RepoInfo {
+  name: string
+  description: string | null
+  language: string | null
+  topics: string[]
+  stars: number
+  defaultBranch: string
+}
+export interface RepoFiles {
+  readme: string | null
+  packageJson: Record<string, unknown> | null
+  pomXml: string | null
+}
+export interface GitRepoData {
+  url: string
+  platform: GitPlatform
+  info: RepoInfo | null
+  files: RepoFiles
+  error?: string
+}
+export function parseGitUrl(url: string): ParsedGitUrl | null {
+  const trimmedUrl = url.trim()
+  const githubHttps = /^https?:\/\/github\.com\/([^\/]+)\/([^\/\s#?]+)/
+  const githubSsh = /^git@github\.com:([^\/]+)\/([^\/\s]+?)(?:\.git)?$/
+  const gitlabHttps = /^https?:\/\/gitlab\.com\/([^\/]+)\/([^\/\s#?]+)/
+  const gitlabSsh = /^git@gitlab\.com:([^\/]+)\/([^\/\s]+?)(?:\.git)?$/
+  const giteeHttps = /^https?:\/\/gitee\.com\/([^\/]+)\/([^\/\s#?]+)/
+  const giteeSsh = /^git@gitee\.com:([^\/]+)\/([^\/\s]+?)(?:\.git)?$/
+  const genericHttps = /^(https?):\/\/([^\/]+)\/([^\/]+)\/([^\/\s#?]+)/
+  let match: RegExpMatchArray | null
+  let platform: GitPlatform = 'unknown'
+  let host = ''
+  let owner = ''
+  let repo = ''
+  if ((match = trimmedUrl.match(githubHttps)) || (match = trimmedUrl.match(githubSsh))) {
+    platform = 'github'
+    host = 'github.com'
+==================== 第 082 页结束 ====================
+==================== 第 083 页开始 ====================
+    owner = match[1]
+    repo = match[2].replace(/\.git$/, '')
+  } else if ((match = trimmedUrl.match(gitlabHttps)) || (match = trimmedUrl.match(gitlabSsh))) {
+    platform = 'gitlab'
+    host = 'gitlab.com'
+    owner = match[1]
+    repo = match[2].replace(/\.git$/, '')
+  } else if ((match = trimmedUrl.match(giteeHttps)) || (match = trimmedUrl.match(giteeSsh))) {
+    platform = 'gitee'
+    host = 'gitee.com'
+    owner = match[1]
+    repo = match[2].replace(/\.git$/, '')
+  } else if ((match = trimmedUrl.match(genericHttps))) {
+    platform = 'gitlab'
+    host = match[2]
+    owner = match[3]
+    repo = match[4].replace(/\.git$/, '')
+  }
+  if (platform === 'unknown' || !owner || !repo) {
+    return null
+  }
+  return {
+    platform,
+    host,
+    owner,
+    repo,
+    rawUrl: trimmedUrl,
+  }
+}
+async function fetchGitHubRepo(owner: string, repo: string): Promise<{ info: RepoInfo | null; files: RepoFiles }> {
+  const files: RepoFiles = {
+    readme: null,
+    packageJson: null,
+    pomXml: null,
+  }
+  let info: RepoInfo | null = null
+  try {
+    const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'presales-agent',
+      },
+    })
+    if (repoRes.ok) {
+      const repoData = await repoRes.json()
+      info = {
+        name: repoData.name,
+        description: repoData.description,
+==================== 第 083 页结束 ====================
+==================== 第 084 页开始 ====================
+        language: repoData.language,
+        topics: repoData.topics || [],
+        stars: repoData.stargazers_count,
+        defaultBranch: repoData.default_branch,
+      }
+    }
+  } catch (e) {
+    console.error('[GitParser] 获取 GitHub 仓库信息失败:', e)
+  }
+  const branch = info?.defaultBranch || 'main'
+  const [readmeRes, packageRes, pomRes] = await Promise.allSettled([
+    fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/README.md`),
+    fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/package.json`),
+    fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/pom.xml`),
+  ])
+  if (readmeRes.status === 'fulfilled' && readmeRes.value.ok) {
+    files.readme = await readmeRes.value.text()
+  }
+  if (packageRes.status === 'fulfilled' && packageRes.value.ok) {
+    try {
+      files.packageJson = await packageRes.value.json()
+    } catch {
+    }
+  }
+  if (pomRes.status === 'fulfilled' && pomRes.value.ok) {
+    files.pomXml = await pomRes.value.text()
+  }
+  return { info, files }
+}
+async function fetchGitLabRepo(
+  host: string,
+  owner: string,
+  repo: string,
+  token?: string
+): Promise<{ info: RepoInfo | null; files: RepoFiles }> {
+  const files: RepoFiles = {
+    readme: null,
+    packageJson: null,
+    pomXml: null,
+  }
+  let info: RepoInfo | null = null
+  const projectPath = encodeURIComponent(`${owner}/${repo}`)
+  const isLocalHost = /^(localhost|127\.|192\.|172\.|10\.)/.test(host) || /^\d+\.\d+\.\d+\.\d+/.test(host)
+  const protocol = isLocalHost ? 'http' : 'https'
+  const baseUrl = `${protocol}://${host}`
+  const headers: Record<string, string> = {
+    'Accept': 'application/json',
+  }
+==================== 第 084 页结束 ====================
+==================== 第 085 页开始 ====================
+  if (token) {
+    headers['PRIVATE-TOKEN'] = token
+  }
+  try {
+    const repoRes = await fetch(`${baseUrl}/api/v4/projects/${projectPath}`, {
+      headers,
+    })
+    if (repoRes.ok) {
+      const repoData = await repoRes.json()
+      info = {
+        name: repoData.name,
+        description: repoData.description,
+        language: null,
+        topics: repoData.topics || [],
+        stars: repoData.star_count,
+        defaultBranch: repoData.default_branch,
+      }
+    }
+  } catch (e) {
+    console.error('[GitParser] 获取 GitLab 仓库信息失败:', e)
+  }
+  const branch = info?.defaultBranch || 'main'
+  const fileHeaders: Record<string, string> = {}
+  if (token) {
+    fileHeaders['PRIVATE-TOKEN'] = token
+  }
+  const [readmeRes, packageRes, pomRes] = await Promise.allSettled([
+    fetch(`${baseUrl}/${owner}/${repo}/-/raw/${branch}/README.md`, { headers: fileHeaders }),
+    fetch(`${baseUrl}/${owner}/${repo}/-/raw/${branch}/package.json`, { headers: fileHeaders }),
+    fetch(`${baseUrl}/${owner}/${repo}/-/raw/${branch}/pom.xml`, { headers: fileHeaders }),
+  ])
+  if (readmeRes.status === 'fulfilled' && readmeRes.value.ok) {
+    files.readme = await readmeRes.value.text()
+  }
+  if (packageRes.status === 'fulfilled' && packageRes.value.ok) {
+    try {
+      files.packageJson = await packageRes.value.json()
+    } catch {
+    }
+  }
+  if (pomRes.status === 'fulfilled' && pomRes.value.ok) {
+    files.pomXml = await pomRes.value.text()
+  }
+  return { info, files }
+}
+async function fetchGiteeRepo(owner: string, repo: string): Promise<{ info: RepoInfo | null; files: RepoFiles }> {
+  const files: RepoFiles = {
+    readme: null,
+==================== 第 085 页结束 ====================
+==================== 第 086 页开始 ====================
+    packageJson: null,
+    pomXml: null,
+  }
+  let info: RepoInfo | null = null
+  try {
+    const repoRes = await fetch(`https://gitee.com/api/v5/repos/${owner}/${repo}`, {
+      headers: {
+        'Accept': 'application/json',
+      },
+    })
+    if (repoRes.ok) {
+      const repoData = await repoRes.json()
+      info = {
+        name: repoData.name,
+        description: repoData.description,
+        language: repoData.language,
+        topics: [],
+        stars: repoData.stargazers_count,
+        defaultBranch: repoData.default_branch,
+      }
+    }
+  } catch (e) {
+    console.error('[GitParser] 获取 Gitee 仓库信息失败:', e)
+  }
+  const branch = info?.defaultBranch || 'master'
+  const [readmeRes, packageRes, pomRes] = await Promise.allSettled([
+    fetch(`https://gitee.com/${owner}/${repo}/raw/${branch}/README.md`),
+    fetch(`https://gitee.com/${owner}/${repo}/raw/${branch}/package.json`),
+    fetch(`https://gitee.com/${owner}/${repo}/raw/${branch}/pom.xml`),
+  ])
+  if (readmeRes.status === 'fulfilled' && readmeRes.value.ok) {
+    files.readme = await readmeRes.value.text()
+  }
+  if (packageRes.status === 'fulfilled' && packageRes.value.ok) {
+    try {
+      files.packageJson = await packageRes.value.json()
+    } catch {
+    }
+  }
+  if (pomRes.status === 'fulfilled' && pomRes.value.ok) {
+    files.pomXml = await pomRes.value.text()
+  }
+  return { info, files }
+}
+export interface FetchOptions {
+  token?: string
+}
+export async function fetchGitRepoData(url: string, options?: FetchOptions): Promise<GitRepoData> {
+==================== 第 086 页结束 ====================
+==================== 第 087 页开始 ====================
+  const parsed = parseGitUrl(url)
+  if (!parsed) {
+    return {
+      url,
+      platform: 'unknown',
+      info: null,
+      files: {
+        readme: null,
+        packageJson: null,
+        pomXml: null,
+      },
+      error: '无法解析 Git 仓库地址，请检查 URL 格式是否正确',
+    }
+  }
+  const { platform, host, owner, repo } = parsed
+  const { token } = options || {}
+  let result: { info: RepoInfo | null; files: RepoFiles }
+  switch (platform) {
+    case 'github':
+      result = await fetchGitHubRepo(owner, repo)
+      break
+    case 'gitlab':
+      result = await fetchGitLabRepo(host, owner, repo, token)
+      break
+    case 'gitee':
+      result = await fetchGiteeRepo(owner, repo)
+      break
+    default:
+      return {
+        url,
+        platform,
+        info: null,
+        files: {
+          readme: null,
+          packageJson: null,
+          pomXml: null,
+        },
+        error: '暂不支持该平台',
+      }
+  }
+  if (!result.info && !result.files.readme && !result.files.packageJson && !result.files.pomXml) {
+    let errorMsg = '无法获取仓库信息，请确认仓库地址正确'
+    if (platform === 'gitlab' && !token) {
+      errorMsg += '。如为私有仓库，请提供 GitLab Access Token'
+    } else if (platform === 'gitlab' && token) {
+      errorMsg += '。请检查 Token 是否有效且具有 read_repository 权限'
+    } else {
+      errorMsg += '且为公开仓库'
+==================== 第 087 页结束 ====================
+==================== 第 088 页开始 ====================
+    }
+    return {
+      url,
+      platform,
+      info: null,
+      files: result.files,
+      error: errorMsg,
+    }
+  }
+  return {
+    url,
+    platform,
+    info: result.info,
+    files: result.files,
+  }
+}
+文件结束 lib/git/parser.ts
+文件开始 lib/git/prescan.ts
+import type { GitToolContext } from './tools'
+export type PrescanConfidence = 'low' | 'medium' | 'high'
+export interface PrescanMetrics {
+  fileCountEstimate: number
+  dirCountEstimate: number
+  maxDepthEstimate: number
+  sampleSize: number
+  requestCount: number
+  rootSignalCount: number
+}
+export interface PrescanResult {
+  maxSteps: number
+  confidence: PrescanConfidence
+  partial: boolean
+  reason: string
+  metrics: PrescanMetrics
+  compressedTreeCsv: string
+  compressedTreeRows: number
+  compressedTreeBytes: number
+}
+interface ScanBudget {
+  startAt: number
+  deadlineMs: number
+  maxRequests: number
+  requestCount: number
+  partial: boolean
+  reasons: Set<string>
+}
+interface MetricAccumulator {
+  fileCount: number
+==================== 第 088 页结束 ====================
+==================== 第 089 页开始 ====================
+  dirCount: number
+  maxDepth: number
+  sampleSize: number
+  rootSignalCount: number
+}
+interface TreeEntry {
+  type: string
+  path: string
+}
+const DEFAULT_STEPS = 16
+const GITHUB_DEADLINE_MS = 2500
+const GITHUB_MAX_REQUESTS = 4
+const GITLAB_DEADLINE_MS = 12000
+const GITLAB_MAX_REQUESTS = 120
+const GITLAB_MAX_PAGES = 100
+const ROOT_SIGNAL_DIRS = new Set([
+  'apps',
+  'services',
+  'modules',
+  'packages',
+  'backend',
+  'frontend',
+  'src',
+])
+function createAccumulator(): MetricAccumulator {
+  return {
+    fileCount: 0,
+    dirCount: 0,
+    maxDepth: 0,
+    sampleSize: 0,
+    rootSignalCount: 0,
+  }
+}
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+function toLowerString(value: unknown): string {
+  return typeof value === 'string' ? value.toLowerCase() : ''
+}
+function markPartial(budget: ScanBudget, reason: string) {
+  budget.partial = true
+  budget.reasons.add(reason)
+}
+function remainingMs(budget: ScanBudget): number {
+  return budget.deadlineMs - (Date.now() - budget.startAt)
+}
+function mapStatusReason(status: number): string {
+  if (status === 401 || status === 403) return 'unauthorized'
+==================== 第 089 页结束 ====================
+==================== 第 090 页开始 ====================
+  if (status === 404) return 'not-found'
+  if (status === 429) return 'rate-limited'
+  if (status >= 500) return 'upstream-5xx'
+  return `upstream-${status}`
+}
+async function fetchWithBudget(
+  budget: ScanBudget,
+  url: string,
+  init: RequestInit
+): Promise<Response | null> {
+  if (budget.requestCount >= budget.maxRequests) {
+    markPartial(budget, 'request-budget-exhausted')
+    return null
+  }
+  const remaining = remainingMs(budget)
+  if (remaining <= 0) {
+    markPartial(budget, 'deadline-exceeded')
+    return null
+  }
+  budget.requestCount += 1
+  const timeoutMs = Math.max(250, Math.min(remaining, 1200))
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      markPartial(budget, 'request-timeout')
+    } else {
+      markPartial(budget, 'network-error')
+    }
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+function countDepth(path: unknown): number {
+  if (typeof path !== 'string' || path.length === 0) return 0
+  return path.split('/').length
+}
+function toConfidence(sampleSize: number, usedRecursiveData: boolean, partial: boolean): PrescanConfidence {
+  let confidence: PrescanConfidence
+  if (usedRecursiveData && sampleSize >= 120) confidence = 'high'
+  else if (usedRecursiveData || sampleSize >= 60) confidence = 'medium'
+  else confidence = 'low'
+  if (!partial) return confidence
+  if (confidence === 'high') return 'medium'
+  if (confidence === 'medium') return 'low'
+==================== 第 090 页结束 ====================
+==================== 第 091 页开始 ====================
+  return 'low'
+}
+function resolveSteps(metrics: MetricAccumulator, confidence: PrescanConfidence): number {
+  const score = (
+    Math.min(metrics.fileCount / 120, 5) +
+    Math.min(metrics.dirCount / 30, 3) +
+    Math.min(metrics.maxDepth / 6, 2) +
+    Math.min(metrics.rootSignalCount * 0.7, 2)
+  )
+  let steps: number
+  if (score < 3.5) steps = 10
+  else if (score < 6.5) steps = 16
+  else if (score < 9.5) steps = 24
+  else steps = 32
+  if (confidence === 'low') {
+    return Math.min(steps + 2, 34)
+  }
+  return steps
+}
+function finalizeResult(
+  budget: ScanBudget,
+  metrics: MetricAccumulator,
+  usedRecursiveData: boolean,
+  entries: TreeEntry[]
+): PrescanResult {
+  const { csv, rows, bytes } = buildCompressedTreeCsv(entries)
+  const confidence = toConfidence(metrics.sampleSize, usedRecursiveData, budget.partial)
+  const maxSteps = resolveSteps(metrics, confidence)
+  return {
+    maxSteps,
+    confidence,
+    partial: budget.partial,
+    reason: budget.reasons.size > 0 ? Array.from(budget.reasons).join(',') : 'ok',
+    metrics: {
+      fileCountEstimate: metrics.fileCount,
+      dirCountEstimate: metrics.dirCount,
+      maxDepthEstimate: metrics.maxDepth,
+      sampleSize: metrics.sampleSize,
+      requestCount: budget.requestCount,
+      rootSignalCount: metrics.rootSignalCount,
+    },
+    compressedTreeCsv: csv,
+    compressedTreeRows: rows,
+    compressedTreeBytes: bytes,
+  }
+}
+function applyRootSignal(metrics: MetricAccumulator, dirName: string) {
+  if (ROOT_SIGNAL_DIRS.has(dirName.toLowerCase())) {
+==================== 第 091 页结束 ====================
+==================== 第 092 页开始 ====================
+    metrics.rootSignalCount += 1
+  }
+}
+function toTypeCode(type: string): string {
+  if (type === 'tree' || type === 'dir') return 'D'
+  if (type === 'blob' || type === 'file') return 'F'
+  if (type === 'commit') return 'S'
+  return 'U'
+}
+function escapeCsv(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r')) {
+    return `"${value.replaceAll('"', '""')}"`
+  }
+  return value
+}
+function buildCompressedTreeCsv(entries: TreeEntry[]): { csv: string; rows: number; bytes: number } {
+  const lines = ['t,d,p']
+  for (const entry of entries) {
+    const typeCode = toTypeCode(entry.type)
+    const depth = countDepth(entry.path)
+    lines.push(`${typeCode},${depth},${escapeCsv(entry.path)}`)
+  }
+  const csv = lines.join('\n')
+  const bytes = new TextEncoder().encode(csv).length
+  return {
+    csv,
+    rows: entries.length,
+    bytes,
+  }
+}
+async function scanGitHub(context: GitToolContext, budget: ScanBudget): Promise<PrescanResult> {
+  const { owner, repo } = context.parsed
+  const metrics = createAccumulator()
+  const entries: TreeEntry[] = []
+  let usedRecursiveData = false
+  let defaultBranch = context.branch
+  const repoRes = await fetchWithBudget(
+    budget,
+    `https://api.github.com/repos/${owner}/${repo}`,
+    {
+      headers: {
+        Accept: 'application/vnd.github.v3+json',
+        'User-Agent': 'presales-agent',
+      },
+    }
+  )
+  if (repoRes) {
+    if (repoRes.ok) {
+==================== 第 092 页结束 ====================
+==================== 第 093 页开始 ====================
+      const repoData: unknown = await repoRes.json()
+      if (isRecord(repoData) && typeof repoData.default_branch === 'string') {
+        defaultBranch = repoData.default_branch
+      }
+    } else {
+      markPartial(budget, mapStatusReason(repoRes.status))
+    }
+  }
+  const refParam = context.branch ? `?ref=${encodeURIComponent(context.branch)}` : ''
+  const rootRes = await fetchWithBudget(
+    budget,
+    `https://api.github.com/repos/${owner}/${repo}/contents/${refParam}`,
+    {
+      headers: {
+        Accept: 'application/vnd.github.v3+json',
+        'User-Agent': 'presales-agent',
+      },
+    }
+  )
+  if (rootRes) {
+    if (rootRes.ok) {
+      const rootData: unknown = await rootRes.json()
+      if (Array.isArray(rootData)) {
+        metrics.sampleSize += rootData.length
+        if (rootData.length > 0) metrics.maxDepth = Math.max(metrics.maxDepth, 1)
+        for (const item of rootData) {
+          if (!isRecord(item)) continue
+          const itemType = toLowerString(item.type)
+          if (itemType === 'file') metrics.fileCount += 1
+          if (itemType === 'dir') {
+            metrics.dirCount += 1
+            applyRootSignal(metrics, typeof item.name === 'string' ? item.name : '')
+          }
+          if (typeof item.path === 'string' && item.path.length > 0) {
+            entries.push({
+              type: itemType === 'dir' ? 'tree' : itemType,
+              path: item.path,
+            })
+          }
+        }
+      }
+    } else {
+      markPartial(budget, mapStatusReason(rootRes.status))
+    }
+  }
+  const recursiveRef = context.branch || defaultBranch || 'HEAD'
+  const recursiveRes = await fetchWithBudget(
+    budget,
+==================== 第 093 页结束 ====================
+==================== 第 094 页开始 ====================
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(recursiveRef)}?recursive=1`,
+    {
+      headers: {
+        Accept: 'application/vnd.github.v3+json',
+        'User-Agent': 'presales-agent',
+      },
+    }
+  )
+  if (recursiveRes) {
+    if (recursiveRes.ok) {
+      const treeData: unknown = await recursiveRes.json()
+      if (isRecord(treeData) && Array.isArray(treeData.tree)) {
+        usedRecursiveData = true
+        metrics.fileCount = 0
+        metrics.dirCount = 0
+        metrics.maxDepth = 0
+        metrics.sampleSize = treeData.tree.length
+        entries.length = 0
+        for (const item of treeData.tree) {
+          if (!isRecord(item)) continue
+          const itemType = toLowerString(item.type)
+          if (itemType === 'blob') metrics.fileCount += 1
+          if (itemType === 'tree') metrics.dirCount += 1
+          const itemPath = typeof item.path === 'string' ? item.path : ''
+          metrics.maxDepth = Math.max(metrics.maxDepth, countDepth(itemPath))
+          if (itemPath.length > 0 && (itemType === 'blob' || itemType === 'tree' || itemType === 'commit')) {
+            entries.push({ type: itemType, path: itemPath })
+          }
+        }
+        if (treeData.truncated === true) {
+          markPartial(budget, 'github-tree-truncated')
+        }
+      }
+    } else {
+      markPartial(budget, mapStatusReason(recursiveRes.status))
+    }
+  }
+  return finalizeResult(budget, metrics, usedRecursiveData, entries)
+}
+type GitLabTreeItem = {
+  type: 'blob' | 'tree'
+  name: string
+  path: string
+}
+function normalizeGitLabTree(data: unknown): GitLabTreeItem[] {
+  if (!Array.isArray(data)) return []
+  const normalized: GitLabTreeItem[] = []
+  for (const item of data) {
+==================== 第 094 页结束 ====================
+==================== 第 095 页开始 ====================
+    if (!isRecord(item)) continue
+    if (item.type !== 'blob' && item.type !== 'tree') continue
+    if (typeof item.name !== 'string' || typeof item.path !== 'string') continue
+    normalized.push({ type: item.type, name: item.name, path: item.path })
+  }
+  return normalized
+}
+async function scanGitLab(context: GitToolContext, budget: ScanBudget): Promise<PrescanResult> {
+  const { baseUrl, headers, branch: specifiedBranch } = context
+  const { owner, repo } = context.parsed
+  const metrics = createAccumulator()
+  const entries: TreeEntry[] = []
+  let usedRecursiveData = false
+  let defaultBranch = specifiedBranch
+  const projectPath = encodeURIComponent(`${owner}/${repo}`)
+  const projectRes = await fetchWithBudget(
+    budget,
+    `${baseUrl}/api/v4/projects/${projectPath}`,
+    { headers }
+  )
+  if (projectRes) {
+    if (projectRes.ok) {
+      const projectData: unknown = await projectRes.json()
+      if (isRecord(projectData) && typeof projectData.default_branch === 'string') {
+        defaultBranch = projectData.default_branch
+      }
+    } else {
+      markPartial(budget, mapStatusReason(projectRes.status))
+    }
+  }
+  const ref = specifiedBranch || defaultBranch
+  const refParam = ref ? `&ref=${encodeURIComponent(ref)}` : ''
+  let nextPage = '1'
+  let scannedPages = 0
+  while (nextPage && scannedPages < GITLAB_MAX_PAGES) {
+    const page = nextPage
+    const recursiveRes = await fetchWithBudget(
+      budget,
+      `${baseUrl}/api/v4/projects/${projectPath}/repository/tree?recursive=true&per_page=100&page=${page}${refParam}`,
+      { headers }
+    )
+    if (!recursiveRes) break
+    if (!recursiveRes.ok) {
+      markPartial(budget, mapStatusReason(recursiveRes.status))
+      break
+    }
+    usedRecursiveData = true
+    const recursiveData: unknown = await recursiveRes.json()
+==================== 第 095 页结束 ====================
+==================== 第 096 页开始 ====================
+    const items = normalizeGitLabTree(recursiveData)
+    metrics.sampleSize += items.length
+    for (const item of items) {
+      if (item.type === 'blob') metrics.fileCount += 1
+      if (item.type === 'tree') {
+        metrics.dirCount += 1
+        if (countDepth(item.path) === 1) {
+          applyRootSignal(metrics, item.name)
+        }
+      }
+      metrics.maxDepth = Math.max(metrics.maxDepth, countDepth(item.path))
+      entries.push({ type: item.type, path: item.path })
+    }
+    const headerNext = recursiveRes.headers.get('x-next-page')
+    nextPage = headerNext && headerNext !== page ? headerNext : ''
+    scannedPages += 1
+  }
+  if (nextPage) {
+    markPartial(budget, 'gitlab-recursive-paginated')
+  }
+  return finalizeResult(budget, metrics, usedRecursiveData, entries)
+}
+export async function estimateExplorationBudget(context: GitToolContext): Promise<PrescanResult> {
+  const isGitLab = context.parsed.platform === 'gitlab'
+  const budget: ScanBudget = {
+    startAt: Date.now(),
+    deadlineMs: isGitLab ? GITLAB_DEADLINE_MS : GITHUB_DEADLINE_MS,
+    maxRequests: isGitLab ? GITLAB_MAX_REQUESTS : GITHUB_MAX_REQUESTS,
+    requestCount: 0,
+    partial: false,
+    reasons: new Set<string>(),
+  }
+  try {
+    let result: PrescanResult
+    if (context.parsed.platform === 'github') {
+      result = await scanGitHub(context, budget)
+    } else if (context.parsed.platform === 'gitlab') {
+      result = await scanGitLab(context, budget)
+    } else {
+      result = {
+        maxSteps: DEFAULT_STEPS,
+        confidence: 'low',
+        partial: true,
+        reason: 'unsupported-platform',
+        metrics: {
+          fileCountEstimate: 0,
+          dirCountEstimate: 0,
+          maxDepthEstimate: 0,
+==================== 第 096 页结束 ====================
+==================== 第 097 页开始 ====================
+          sampleSize: 0,
+          requestCount: 0,
+          rootSignalCount: 0,
+        },
+        compressedTreeCsv: 't,d,p',
+        compressedTreeRows: 0,
+        compressedTreeBytes: 5,
+      }
+    }
+    console.log('[ParseGitFunctions] 预扫描结果:', {
+      platform: context.parsed.platform,
+      maxSteps: result.maxSteps,
+      confidence: result.confidence,
+      partial: result.partial,
+      reason: result.reason,
+      metrics: result.metrics,
+      compressedTreeRows: result.compressedTreeRows,
+      compressedTreeBytes: result.compressedTreeBytes,
+    })
+    return result
+  } catch (error) {
+    console.warn('[ParseGitFunctions] 预扫描失败，使用默认预算:', error)
+    return {
+      maxSteps: DEFAULT_STEPS,
+      confidence: 'low',
+      partial: true,
+      reason: 'prescan-exception',
+      metrics: {
+        fileCountEstimate: 0,
+        dirCountEstimate: 0,
+        maxDepthEstimate: 0,
+        sampleSize: 0,
+        requestCount: budget.requestCount,
+        rootSignalCount: 0,
+      },
+      compressedTreeCsv: 't,d,p',
+      compressedTreeRows: 0,
+      compressedTreeBytes: 5,
+    }
+  }
+}
+文件结束 lib/git/prescan.ts
+文件开始 lib/git/tools.ts
+import { tool } from 'ai'
+import { z } from 'zod'
+import { parseGitUrl } from './parser'
+export interface GitToolContext {
+  url: string
+==================== 第 097 页结束 ====================
+==================== 第 098 页开始 ====================
+  token?: string
+  branch?: string
+  parsed: NonNullable<ReturnType<typeof parseGitUrl>>
+  baseUrl: string
+  headers: Record<string, string>
+}
+export function createGitToolContext(url: string, token?: string, branch?: string): GitToolContext | null {
+  const parsed = parseGitUrl(url)
+  if (!parsed) return null
+  const { host } = parsed
+  const isLocalHost = /^(localhost|127\.|192\.|172\.|10\.)/.test(host) || /^\d+\.\d+\.\d+\.\d+/.test(host)
+  const protocol = isLocalHost ? 'http' : 'https'
+  const baseUrl = `${protocol}://${host}`
+  const headers: Record<string, string> = {
+    'Accept': 'application/json',
+  }
+  if (token) {
+    headers['PRIVATE-TOKEN'] = token
+  }
+  return {
+    url,
+    token,
+    branch,
+    parsed,
+    baseUrl,
+    headers,
+  }
+}
+export function createGitTools(context: GitToolContext) {
+  const { parsed, baseUrl, headers, branch: specifiedBranch } = context
+  const { owner, repo, platform } = parsed
+  const getRepoTree = tool({
+    description: '获取仓库的目录结构树，了解项目的文件组织。建议首先调用此工具了解项目结构。',
+    inputSchema: z.object({
+      path: z.string().optional().describe('要查看的目录路径，默认为根目录'),
+      recursive: z.boolean().optional().describe('是否递归获取子目录，默认 false'),
+    }),
+    execute: async ({ path = '', recursive = false }) => {
+      try {
+        if (platform === 'gitlab') {
+          const projectPath = encodeURIComponent(`${owner}/${repo}`)
+          const treePath = path ? `&path=${encodeURIComponent(path)}` : ''
+          const recursiveParam = recursive ? '&recursive=true' : ''
+          const refParam = specifiedBranch ? `&ref=${encodeURIComponent(specifiedBranch)}` : ''
+          const res = await fetch(
+            `${baseUrl}/api/v4/projects/${projectPath}/repository/tree?per_page=100${treePath}${recursiveParam}${refParam}`,
+            { headers }
+          )
+==================== 第 098 页结束 ====================
+==================== 第 099 页开始 ====================
+          if (!res.ok) {
+            return { error: `获取目录失败: ${res.status}`, files: [] }
+          }
+          const tree = await res.json()
+          const files = tree.map((item: { name: string; type: string; path: string }) => ({
+            name: item.name,
+            type: item.type,
+            path: item.path,
+          }))
+          return { files, total: files.length }
+        }
+        if (platform === 'github') {
+          const refParam = specifiedBranch ? `?ref=${encodeURIComponent(specifiedBranch)}` : ''
+          const res = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/contents/${path}${refParam}`,
+            {
+              headers: {
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'presales-agent',
+              },
+            }
+          )
+          if (!res.ok) {
+            return { error: `获取目录失败: ${res.status}`, files: [] }
+          }
+          const contents = await res.json()
+          const items = Array.isArray(contents) ? contents : [contents]
+          const files = items.map((item: { name: string; type: string; path: string }) => ({
+            name: item.name,
+            type: item.type === 'dir' ? 'tree' : 'blob',
+            path: item.path,
+          }))
+          return { files, total: files.length }
+        }
+        return { error: '暂不支持该平台', files: [] }
+      } catch (e) {
+        return { error: `获取目录失败: ${e instanceof Error ? e.message : '未知错误'}`, files: [] }
+      }
+    },
+  })
+  const readFile = tool({
+    description: '读取仓库中指定文件的内容。可用于读取 README、配置文件、代码文件等。',
+    inputSchema: z.object({
+      path: z.string().describe('文件路径，如 "README.md" 或 "src/index.ts"'),
+    }),
+    execute: async ({ path }) => {
+      try {
+        if (platform === 'gitlab') {
+==================== 第 099 页结束 ====================
+==================== 第 100 页开始 ====================
+          const projectPath = encodeURIComponent(`${owner}/${repo}`)
+          let branch = specifiedBranch || 'master'
+          if (!specifiedBranch) {
+            try {
+              const projectRes = await fetch(`${baseUrl}/api/v4/projects/${projectPath}`, { headers })
+              if (projectRes.ok) {
+                const projectData = await projectRes.json()
+                branch = projectData.default_branch || 'master'
+              }
+            } catch {
+            }
+          }
+          const filePath = encodeURIComponent(path)
+          const apiUrl = `${baseUrl}/api/v4/projects/${projectPath}/repository/files/${filePath}/raw?ref=${branch}`
+          console.log('[GitTools] readFile:', { path, branch, apiUrl })
+          const res = await fetch(apiUrl, { headers })
+          if (!res.ok) {
+            console.log('[GitTools] readFile failed:', res.status, res.statusText)
+            return { error: `文件不存在或无法访问: ${path} (${res.status})`, content: null }
+          }
+          const content = await res.text()
+          const truncated = content.length > 5000
+          return {
+            path,
+            content: truncated ? content.slice(0, 5000) + '\n...(内容已截断)' : content,
+            truncated,
+            size: content.length,
+          }
+        }
+        if (platform === 'github') {
+          const ref = specifiedBranch || 'HEAD'
+          const res = await fetch(
+            `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}`,
+            {
+              headers: {
+                'User-Agent': 'presales-agent',
+              },
+            }
+          )
+          if (!res.ok) {
+            return { error: `文件不存在或无法访问: ${path}`, content: null }
+          }
+          const content = await res.text()
+          const truncated = content.length > 5000
+          return {
+            path,
+            content: truncated ? content.slice(0, 5000) + '\n...(内容已截断)' : content,
+            truncated,
+==================== 第 100 页结束 ====================
