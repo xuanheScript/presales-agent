@@ -1,0 +1,37 @@
+{
+  "manifestVersion": "funasr-meeting-v1",
+  "validatedAt": "2026-07-29",
+  "runtime": {
+    "python": "3.12",
+    "funasr": "1.3.30",
+    "torch": "2.11.0",
+    "torchaudio": "2.11.0"
+  },
+  "models": {
+    "asr": {
+      "alias": "paraformer-zh",
+      "resolvedModelId": "iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+      "revision": "master"
+    },
+    "vad": {
+      "alias": "fsmn-vad",
+      "resolvedModelId": "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
+      "revision": "master"
+    },
+    "punctuation": {
+      "alias": "ct-punc",
+      "resolvedModelId": "iic/punc_ct-transformer_cn-en-common-vocab471067-large",
+      "revision": "master"
+    },
+    "speaker": {
+      "alias": "cam++",
+      "resolvedModelId": "iic/speech_campplus_sv_zh-cn_16k-common",
+      "revision": "master"
+    }
+  },
+  "notes": [
+    "Replace master with immutable revisions or artifact digests before production deployment.",
+    "Archive each model card, weight license and NOTICE before production deployment.",
+    "Speaker labels are anonymous and scoped to one recording."
+  ]
+}
