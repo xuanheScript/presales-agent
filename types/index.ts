@@ -20,6 +20,8 @@ export interface Requirement {
   parsed_content: ParsedRequirement | null
   file_url: string | null
   requirement_type: RequirementType
+  source: 'manual' | 'upload' | 'elicitation'
+  elicitation_session_id: string | null
   created_at: string
 }
 
@@ -74,7 +76,12 @@ export interface CostEstimate {
   // 新增字段
   base_days?: number              // 基础总人天
   buffered_days?: number          // 含缓冲的总人天
-  buffer_coefficient?: number     // 缓冲系数（1.2-2.0）
+  buffer_coefficient?: number     // 缓冲系数（1.0-2.5）
+  rule_version?: string
+  service_policy_version?: string
+  currency?: string
+  labor_cost_per_day?: number
+  working_hours_per_day?: number
   breakdown: CostBreakdown
   created_at: string
   updated_at: string
@@ -84,6 +91,7 @@ export interface CostEstimate {
 export interface RoleCostBreakdown {
   role: string
   days: number
+  baseDays?: number
   cost: number
   headcount: number
 }
@@ -92,12 +100,16 @@ export interface RoleCostBreakdown {
 export interface AdditionalWorkCostBreakdown {
   workItem: string
   days: number
+  baseDays?: number
   cost: number
 }
 
 // 第三方服务成本
 export interface ThirdPartyServiceCost {
+  code?: 'development_environment' | 'ci_cd'
   name: string
+  quantity?: number
+  unitCost?: number
   cost: number
 }
 
@@ -108,6 +120,13 @@ export interface CostBreakdown {
   additionalWorkBreakdown?: AdditionalWorkCostBreakdown[]
   // 第三方服务
   thirdPartyServices?: ThirdPartyServiceCost[]
+  bufferDays?: number
+  estimatedDurationDays?: number
+  reconciliation?: {
+    laborLinesTotal: number
+    laborCostDifference: number
+    isBalanced: boolean
+  }
 
   // 兼容旧版本字段（已废弃，仅用于旧数据展示）
   /** @deprecated 使用 roleBreakdown 替代 */
@@ -245,6 +264,27 @@ export interface QuickEstimate {
   updated_at: string
 }
 
+export type AgentExecutionStatus =
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'timed_out'
+
+export interface AgentExecution {
+  id: string
+  project_id: string
+  requirement_id: string | null
+  agent_type: string
+  input_data: Record<string, unknown>
+  output_data: unknown | null
+  status: AgentExecutionStatus
+  error_message: string | null
+  execution_time_ms: number | null
+  created_at: string
+  completed_at: string | null
+}
+
 // Agent 工作流相关类型
 export interface AgentWorkflowResult {
   requirementAnalysis: ParsedRequirement
@@ -315,6 +355,8 @@ export interface ElicitationSession {
   current_round: number
   max_rounds: number
   collected_info: ElicitationCollectedInfo
+  current_questions: ElicitationQuestion[]
+  completion_summary: string | null
   created_at: string
   updated_at: string
   completed_at: string | null
@@ -375,6 +417,7 @@ export interface ElicitationMessage {
   role: 'assistant' | 'user'
   content: string
   questions?: ElicitationQuestion[]
+  extracted_info?: Partial<ElicitationCollectedInfo> | null
   created_at: string
 }
 

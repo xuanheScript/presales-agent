@@ -21,6 +21,29 @@ interface ChatToolsContext {
 export function createChatTools(context: ChatToolsContext) {
   const { projectId, requirementId } = context
 
+  const rejectFormalFunctionWrite = async (
+    supabase: Awaited<ReturnType<typeof createClient>>
+  ) => {
+    const { data, error } = await supabase
+      .from('cost_estimates')
+      .select('rule_version')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      return { success: false as const, error: `检查正式成本版本失败: ${error.message}` }
+    }
+    if (data?.rule_version === 'formal-workflow-v1') {
+      return {
+        success: false as const,
+        error: '该项目使用正式成本规则，请在功能明细页面完成角色人天分配并触发自动重算',
+      }
+    }
+    return null
+  }
+
   // ==================== 需求管理工具 ====================
 
   const updateRequirement = tool({
@@ -140,6 +163,8 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async ({ moduleName, functionName, description, difficultyLevel, estimatedHours }) => {
       const supabase = await createClient()
+      const formalWriteRejection = await rejectFormalFunctionWrite(supabase)
+      if (formalWriteRejection) return formalWriteRejection
 
       const { data, error } = await supabase
         .from('function_modules')
@@ -175,6 +200,8 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async ({ modules }) => {
       const supabase = await createClient()
+      const formalWriteRejection = await rejectFormalFunctionWrite(supabase)
+      if (formalWriteRejection) return formalWriteRejection
 
       const insertData = modules.map(m => ({
         project_id: projectId,
@@ -206,6 +233,8 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async ({ functionId, hours }) => {
       const supabase = await createClient()
+      const formalWriteRejection = await rejectFormalFunctionWrite(supabase)
+      if (formalWriteRejection) return formalWriteRejection
 
       const { data, error } = await supabase
         .from('function_modules')
@@ -262,6 +291,8 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async ({ functionId }) => {
       const supabase = await createClient()
+      const formalWriteRejection = await rejectFormalFunctionWrite(supabase)
+      if (formalWriteRejection) return formalWriteRejection
 
       // 先获取功能名称用于返回消息
       const { data: fn } = await supabase
@@ -294,6 +325,8 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async ({ libraryItemId, customHours, customDifficulty }) => {
       const supabase = await createClient()
+      const formalWriteRejection = await rejectFormalFunctionWrite(supabase)
+      if (formalWriteRejection) return formalWriteRejection
 
       // 获取功能库项目
       const { data: libraryItem } = await supabase
@@ -350,6 +383,13 @@ export function createChatTools(context: ChatToolsContext) {
         .single()
 
       const updateData: Record<string, number> = {}
+
+      if (existingCost?.rule_version === 'formal-workflow-v1') {
+        return {
+          success: false,
+          error: '正式成本只能通过功能工时、角色人天或角色人数变更自动重算，不能直接修改成本参数',
+        }
+      }
 
       if (params.serviceCost !== undefined) {
         updateData.service_cost = params.serviceCost
@@ -425,11 +465,18 @@ export function createChatTools(context: ChatToolsContext) {
       // 获取现有成本估算
       const { data: existingCost } = await supabase
         .from('cost_estimates')
-        .select('service_cost, infrastructure_cost, buffer_percentage, breakdown')
+        .select('id, service_cost, infrastructure_cost, buffer_percentage, breakdown, rule_version')
         .eq('project_id', projectId)
         .order('created_at', { ascending: false })
         .limit(1)
         .single()
+
+      if (existingCost?.rule_version === 'formal-workflow-v1') {
+        return {
+          success: false,
+          error: '该项目使用正式成本规则，请通过功能或角色编辑触发自动重算，旧版聊天公式不能覆盖正式成本',
+        }
+      }
 
       // 确定最终使用的配置值（优先级：用户指定 > 现有值 > 系统配置 > 默认值）
       const laborCostPerDay = params.laborCostPerDay
@@ -480,15 +527,22 @@ export function createChatTools(context: ChatToolsContext) {
         },
       }
 
+      let writeError: { message: string } | null = null
       if (existingCost) {
-        await supabase
+        const { error } = await supabase
           .from('cost_estimates')
           .update(costData)
-          .eq('project_id', projectId)
+          .eq('id', existingCost.id)
+        writeError = error
       } else {
-        await supabase
+        const { error } = await supabase
           .from('cost_estimates')
           .insert(costData)
+        writeError = error
+      }
+
+      if (writeError) {
+        return { success: false, error: writeError.message }
       }
 
       return {

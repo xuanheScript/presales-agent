@@ -1,5 +1,12 @@
 import { generateText } from 'ai'
+import type { RunnableConfig } from '@langchain/core/runnables'
 import { defaultModel } from '@/lib/ai/config'
+import {
+  EXECUTION_POLICY,
+  getRunnableSignal,
+  isAbortError,
+  withAbortSignal,
+} from '../execution-policy'
 import { createTelemetryConfig } from '@/lib/observability/langfuse'
 import { getReferencesForBreakdown, incrementReferenceUsage } from '@/app/actions/estimate-references'
 import type { EstimateReference } from '@/types'
@@ -223,7 +230,8 @@ ${lines.join('\n')}
  * 使用 AI SDK 的 generateText + Output.object
  */
 export async function breakdownNode(
-  state: PresalesState
+  state: PresalesState,
+  config?: RunnableConfig
 ): Promise<Partial<PresalesState>> {
   // 验证前置条件
   if (!state.analysis) {
@@ -247,7 +255,9 @@ export async function breakdownNode(
         .filter(Boolean)
         .join(' ')
 
-      const references = await getReferencesForBreakdown(queryText, 10)
+      const references = await getReferencesForBreakdown(queryText, 10, {
+        signal: getRunnableSignal(config),
+      })
 
       if (references.length > 0) {
         referenceSection = formatReferencesForPrompt(references)
@@ -258,6 +268,10 @@ export async function breakdownNode(
         })
       }
     } catch (refError) {
+      if (isAbortError(refError, getRunnableSignal(config))) {
+        throw refError
+      }
+
       // 参考查询失败不阻塞主流程
       console.warn('[Agent] 获取估算参考失败，继续执行:', refError)
     }
@@ -272,17 +286,24 @@ export async function breakdownNode(
       .replace('{referenceSection}', referenceSection)
 
     // 调用 AI 模型进行功能拆解（CSV 格式）
-    const result = await generateText({
-      model: defaultModel,
-      maxOutputTokens: 8192,
-      temperature: 0.3, // 低温度，更稳定的输出
-      system: `你是一个专业的软件项目工时评估专家。严格按照要求的 CSV 格式输出，不要输出任何解释文字。`,
-      prompt,
-      experimental_telemetry: createTelemetryConfig('workflow-breakdown', {
-        projectId: state.projectId,
-        requirementId: state.requirementId,
-      }),
-    })
+    const result = await withAbortSignal(
+      [getRunnableSignal(config)],
+      EXECUTION_POLICY.workflowNodeTimeoutMs,
+      (signal) => generateText({
+        model: defaultModel,
+        maxOutputTokens: 8192,
+        temperature: 0.3,
+        maxRetries: EXECUTION_POLICY.aiMaxRetries,
+        abortSignal: signal,
+        system: `你是一个专业的软件项目工时评估专家。严格按照要求的 CSV 格式输出，不要输出任何解释文字。`,
+        prompt,
+        experimental_telemetry: createTelemetryConfig('workflow-breakdown', {
+          projectId: state.projectId,
+          requirementId: state.requirementId,
+          executionId: String(config?.configurable?.executionId || 'none'),
+        }),
+      })
+    )
 
     // 调试：打印模型返回的完整结果
     console.log('[Agent] generateText 返回结果:', {
@@ -294,6 +315,14 @@ export async function breakdownNode(
     // 打印原始 CSV 输出
     if (result.text) {
       console.log('[Agent] 模型 CSV 输出 (前2000字符):', result.text.substring(0, 2000))
+    }
+
+    // 截断输出可能形成“合法但不完整”的 CSV，必须失败关闭。
+    if (result.finishReason !== 'stop') {
+      return {
+        error: `功能拆解输出未完整结束 (${result.finishReason})，请缩小需求范围后重试`,
+        currentStep: 'breakdown',
+      }
     }
 
     // 解析 CSV 输出
@@ -349,6 +378,10 @@ export async function breakdownNode(
       error: null,
     }
   } catch (error) {
+    if (isAbortError(error, getRunnableSignal(config))) {
+      throw error
+    }
+
     console.error('[Agent] 功能拆解失败:', error)
 
     return {

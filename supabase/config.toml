@@ -56,11 +56,12 @@ enabled = true
 schema_paths = []
 
 [db.seed]
-# If enabled, seeds the database after migrations during a db reset.
-enabled = true
+# 当前项目使用云端 Supabase，尚未维护可重复执行的 seed.sql。
+# 建立受控种子数据前保持关闭，避免 CLI 查找不存在的 ./seed.sql。
+enabled = false
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+sql_paths = []
 
 [db.network_restrictions]
 # Enable management of network restrictions.

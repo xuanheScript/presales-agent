@@ -12,6 +12,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "db:migrations:validate": "node scripts/validate_migrations.mjs",
+    "db:migrations:list": "pnpm db:migrations:validate && supabase migration list --linked",
+    "db:migrations:check": "pnpm db:migrations:validate && supabase db push --linked --dry-run",
+    "db:migrations:push": "pnpm db:migrations:validate && supabase db push --linked",
+    "db:migrations:new": "supabase migration new",
     "changelog": "conventional-changelog -p angular -i CHANGELOG.md -s"
   },
   "dependencies": {
@@ -89,6 +97,7 @@
     "eslint-config-next": "16.1.1",
     "supabase": "^2.71.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

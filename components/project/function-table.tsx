@@ -34,14 +34,14 @@ import {
   toggleFunctionVerified,
 } from '@/app/actions/functions'
 import { batchExtractToReferences } from '@/app/actions/estimate-references'
-import { DEFAULT_CONFIG } from '@/constants'
+import type { ProjectRole } from '@/app/actions/roles'
 import type { FunctionModule } from '@/types'
 
 /**
  * 工时转人天（保留1位小数）
  */
-function hoursToWorkDays(hours: number): number {
-  return Math.round((hours / DEFAULT_CONFIG.WORKING_HOURS_PER_DAY) * 10) / 10
+function hoursToWorkDays(hours: number, workingHoursPerDay: number): number {
+  return Math.round((hours / workingHoursPerDay) * 10) / 10
 }
 
 interface ProjectMetadata {
@@ -53,10 +53,25 @@ interface ProjectMetadata {
 interface FunctionTableProps {
   projectId: string
   functions: FunctionModule[]
+  roles: ProjectRole[]
+  workingHoursPerDay: number
   projectMetadata?: ProjectMetadata
 }
 
-export function FunctionTable({ projectId, functions, projectMetadata }: FunctionTableProps) {
+interface NewFunctionForm {
+  moduleName: string
+  functionName: string
+  description: string
+  roleDays: Record<string, number>
+}
+
+export function FunctionTable({
+  projectId,
+  functions,
+  roles,
+  workingHoursPerDay,
+  projectMetadata,
+}: FunctionTableProps) {
   const router = useRouter()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingHours, setEditingHours] = useState<number>(0)
@@ -66,11 +81,11 @@ export function FunctionTable({ projectId, functions, projectMetadata }: Functio
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
 
   // 新增功能表单状态
-  const [newFunction, setNewFunction] = useState({
+  const [newFunction, setNewFunction] = useState<NewFunctionForm>({
     moduleName: '',
     functionName: '',
     description: '',
-    estimatedHours: 8,
+    roleDays: {},
   })
 
   // 按模块分组
@@ -88,14 +103,13 @@ export function FunctionTable({ projectId, functions, projectMetadata }: Functio
   // 开始编辑工时（以人天为单位）
   const startEditing = (fn: FunctionModule) => {
     setEditingId(fn.id)
-    setEditingHours(hoursToWorkDays(fn.estimated_hours))
+    setEditingHours(hoursToWorkDays(fn.estimated_hours, workingHoursPerDay))
   }
 
   // 保存工时（人天转回小时后提交）
   const saveHours = async (id: string) => {
     startTransition(async () => {
-      const hours = editingHours * DEFAULT_CONFIG.WORKING_HOURS_PER_DAY
-      const result = await updateFunctionHours(id, hours)
+      const result = await updateFunctionHours(id, editingHours)
       if (result.error) {
         toast.error(result.error)
       } else {
@@ -118,9 +132,9 @@ export function FunctionTable({ projectId, functions, projectMetadata }: Functio
   }
 
   // 保存角色工时
-  const saveRoleDays = async (fnId: string, roleIndex: number) => {
+  const saveRoleDays = async (fnId: string, roleName: string) => {
     startTransition(async () => {
-      const result = await updateRoleEstimateDays(fnId, roleIndex, editingRoleDays)
+      const result = await updateRoleEstimateDays(fnId, roleName, editingRoleDays)
       if (result.error) {
         toast.error(result.error)
       } else {
@@ -186,20 +200,29 @@ export function FunctionTable({ projectId, functions, projectMetadata }: Functio
   // 添加功能
   const handleAddFunction = async () => {
     startTransition(async () => {
+      const roleEstimates = roles
+        .map((role) => ({
+          role: role.role_name,
+          days: newFunction.roleDays[role.id] || 0,
+        }))
+        .filter((role) => role.days > 0)
       const result = await addFunctionModule(projectId, {
-        ...newFunction,
-        difficultyLevel: 'medium', // 默认值，保持兼容
+        moduleName: newFunction.moduleName,
+        functionName: newFunction.functionName,
+        description: newFunction.description,
+        difficultyLevel: 'medium',
+        roleEstimates,
       })
       if (result.error) {
         toast.error(result.error)
       } else {
-        toast.success('功能已添加')
+        toast.success('功能已添加，成本已重新计算')
         setIsAddDialogOpen(false)
         setNewFunction({
           moduleName: '',
           functionName: '',
           description: '',
-          estimatedHours: 8,
+          roleDays: {},
         })
         router.refresh()
       }
@@ -224,6 +247,7 @@ export function FunctionTable({ projectId, functions, projectMetadata }: Functio
             newFunction={newFunction}
             setNewFunction={setNewFunction}
             onSubmit={handleAddFunction}
+            roles={roles}
             isPending={isPending}
           />
         </Dialog>
@@ -262,6 +286,7 @@ export function FunctionTable({ projectId, functions, projectMetadata }: Functio
             newFunction={newFunction}
             setNewFunction={setNewFunction}
             onSubmit={handleAddFunction}
+            roles={roles}
             isPending={isPending}
           />
         </Dialog>
@@ -320,7 +345,7 @@ export function FunctionTable({ projectId, functions, projectMetadata }: Functio
                                   step={0.5}
                                   autoFocus
                                   onKeyDown={(e) => {
-                                    if (e.key === 'Enter') saveRoleDays(fn.id, idx)
+                                    if (e.key === 'Enter') saveRoleDays(fn.id, re.role)
                                     if (e.key === 'Escape') cancelEditingRole()
                                   }}
                                 />
@@ -328,7 +353,7 @@ export function FunctionTable({ projectId, functions, projectMetadata }: Functio
                                   size="icon"
                                   variant="ghost"
                                   className="h-6 w-6"
-                                  onClick={() => saveRoleDays(fn.id, idx)}
+                                  onClick={() => saveRoleDays(fn.id, re.role)}
                                   disabled={isPending}
                                 >
                                   {isPending ? (
@@ -402,7 +427,7 @@ export function FunctionTable({ projectId, functions, projectMetadata }: Functio
                         className="flex items-center gap-1 cursor-pointer hover:text-primary"
                         onClick={() => startEditing(fn)}
                       >
-                        <span>{hoursToWorkDays(fn.estimated_hours)}人天</span>
+                        <span>{hoursToWorkDays(fn.estimated_hours, workingHoursPerDay)}人天</span>
                         <Pencil className="h-3 w-3 opacity-50" />
                       </div>
                     )}
@@ -445,7 +470,7 @@ export function FunctionTable({ projectId, functions, projectMetadata }: Functio
       <div className="flex justify-end text-sm">
         <div>
           <span className="text-muted-foreground">人天合计：</span>
-          <span className="font-medium">{hoursToWorkDays(totalHours)} 人天</span>
+          <span className="font-medium">{hoursToWorkDays(totalHours, workingHoursPerDay)} 人天</span>
         </div>
       </div>
     </div>
@@ -457,16 +482,13 @@ function AddFunctionDialog({
   newFunction,
   setNewFunction,
   onSubmit,
+  roles,
   isPending,
 }: {
-  newFunction: {
-    moduleName: string
-    functionName: string
-    description: string
-    estimatedHours: number
-  }
-  setNewFunction: React.Dispatch<React.SetStateAction<typeof newFunction>>
+  newFunction: NewFunctionForm
+  setNewFunction: React.Dispatch<React.SetStateAction<NewFunctionForm>>
   onSubmit: () => void
+  roles: ProjectRole[]
   isPending: boolean
 }) {
   return (
@@ -508,22 +530,39 @@ function AddFunctionDialog({
           />
         </div>
         <div className="space-y-2">
-          <Label>预估工时（小时）</Label>
-          <Input
-            type="number"
-            value={newFunction.estimatedHours}
-            onChange={(e) =>
-              setNewFunction((prev) => ({
-                ...prev,
-                estimatedHours: Number(e.target.value),
-              }))
-            }
-            min={1}
-          />
+          <Label>角色人天 *</Label>
+          {roles.length === 0 ? (
+            <p className="text-sm text-destructive">项目还没有角色，请先执行正式分析。</p>
+          ) : (
+            <div className="space-y-2 rounded-md border p-3">
+              {roles.map((role) => (
+                <div key={role.id} className="flex items-center justify-between gap-3">
+                  <span className="text-sm">{role.role_name}</span>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      value={newFunction.roleDays[role.id] || 0}
+                      onChange={(e) => setNewFunction((prev) => ({
+                        ...prev,
+                        roleDays: {
+                          ...prev.roleDays,
+                          [role.id]: Number(e.target.value),
+                        },
+                      }))}
+                      className="w-24"
+                      min={0}
+                      step={0.5}
+                    />
+                    <span className="text-xs text-muted-foreground">人天</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       <DialogFooter>
-        <Button onClick={onSubmit} disabled={isPending}>
+        <Button onClick={onSubmit} disabled={isPending || roles.length === 0}>
           {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           添加
         </Button>

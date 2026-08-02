@@ -1,5 +1,4 @@
-import { Annotation, MessagesAnnotation } from '@langchain/langgraph'
-import type { ParsedRequirement, FunctionModule, EffortEstimation, CostEstimate } from '@/types'
+import { Annotation } from '@langchain/langgraph'
 
 /**
  * 售前成本估算 Agent 工作流状态定义
@@ -16,6 +15,7 @@ export interface WorkflowSystemConfig {
   laborCostPerDay: number
   riskBufferPercentage: number
   workingHoursPerDay: number
+  currency: string
 }
 
 // Agent 分析结果（与 ParsedRequirement 对齐但独立定义以便扩展）
@@ -84,23 +84,40 @@ export interface AgentEffortEstimation {
 
 // 成本计算输出 - 支持动态角色汇总
 export interface AgentCostEstimate {
+  ruleVersion: 'formal-workflow-v1'
+  servicePolicyVersion: 'formal-service-v1'
+  currency: string
+  laborCostPerDay: number
+  workingHoursPerDay: number
+
   // 基础工时统计
   baseDays: number                    // 基础总人天（功能模块 + 额外工作）
+  bufferDays: number                  // 风险缓冲增加的人天
   bufferedDays: number                // 含缓冲的总人天
   bufferCoefficient: number           // 缓冲系数
-
-  // 按角色汇总（核心输出）
-  roleBreakdown: {
+  estimatedDurationDays: number       // 按角色人数推算的含缓冲周期
+  staffingByRole: {
     role: string
-    days: number                      // 该角色总人天
-    cost: number                      // 该角色总成本
-    headcount: number                 // 建议人数
+    functionalDays: number
+    additionalDays: number
+    totalDays: number
+    headcount: number
   }[]
 
-  // 额外工作汇总
+  // 按角色汇总（只包含功能开发工作）
+  roleBreakdown: {
+    role: string
+    days: number                      // 含缓冲功能人天
+    baseDays: number                  // 基础功能人天
+    cost: number
+    headcount: number
+  }[]
+
+  // 额外工作独立汇总
   additionalWorkBreakdown: {
     workItem: string
-    days: number
+    days: number                      // 含缓冲额外工作人天
+    baseDays: number
     cost: number
   }[]
 
@@ -112,23 +129,28 @@ export interface AgentCostEstimate {
 
   // 第三方服务明细
   thirdPartyServices: {
+    code: 'development_environment' | 'ci_cd'
     name: string
+    quantity: number
+    unitCost: number
     cost: number
   }[]
+
+  reconciliation: {
+    laborLinesTotal: number
+    laborCostDifference: number
+    isBalanced: boolean
+  }
 }
 
 /**
  * 定义 Agent 工作流状态
  *
  * 使用 LangGraph 的 Annotation 系统，支持：
- * - 状态持久化
- * - 增量更新
+ * - 请求内状态增量更新
  * - 类型安全
  */
 export const PresalesStateAnnotation = Annotation.Root({
-  // 继承消息历史（用于对话式交互）
-  ...MessagesAnnotation.spec,
-
   // ========== 项目信息 ==========
   /** 项目 ID */
   projectId: Annotation<string>({
@@ -236,7 +258,6 @@ export function createInitialState(
     rawRequirement,
     projectDescription,
     systemConfig,
-    messages: [],
     analysis: null,
     functions: [],
     identifiedRoles: [],

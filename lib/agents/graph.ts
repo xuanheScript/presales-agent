@@ -1,5 +1,12 @@
 import { StateGraph, START, END } from '@langchain/langgraph'
 import {
+  createManagedAbortSignal,
+  EXECUTION_POLICY,
+  isAbortError,
+  withAbortSignal,
+  type WorkflowRunOptions,
+} from './execution-policy'
+import {
   PresalesStateAnnotation,
   createInitialState,
   extractWorkflowResult,
@@ -100,7 +107,8 @@ export async function runPresalesWorkflow(
   requirementId: string,
   rawRequirement: string,
   projectDescription: string = '',
-  systemConfig: WorkflowSystemConfig | null = null
+  systemConfig: WorkflowSystemConfig | null = null,
+  options: WorkflowRunOptions = {}
 ): Promise<WorkflowResult> {
   console.log('[Graph] 开始执行售前成本估算工作流:', {
     projectId,
@@ -115,27 +123,29 @@ export async function runPresalesWorkflow(
     // 创建初始状态
     const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription, systemConfig)
 
-    // 执行工作流
-    const finalState = await presalesGraph.invoke(initialState)
-
-    const duration = Date.now() - startTime
-    console.log('[Graph] 工作流执行完成:', {
-      duration: `${duration}ms`,
-      success: !finalState.error,
-      hasAnalysis: !!finalState.analysis,
-      functionsCount: finalState.functions?.length || 0,
-      hasEstimation: !!finalState.estimation,
-      hasCost: !!finalState.cost,
-    })
-
-    // 提取并返回结果
-    return extractWorkflowResult(finalState)
+    return await withAbortSignal(
+      [options.signal],
+      options.timeoutMs ?? EXECUTION_POLICY.presalesRouteTimeoutMs,
+      async (signal) => {
+        const finalState = await presalesGraph.invoke(initialState, {
+          signal,
+          configurable: {
+            executionId: options.executionId,
+          },
+        })
+        return extractWorkflowResult(finalState)
+      }
+    )
   } catch (error) {
     const duration = Date.now() - startTime
     console.error('[Graph] 工作流执行失败:', {
       duration: `${duration}ms`,
       error,
     })
+
+    if (isAbortError(error, options.signal)) {
+      throw error
+    }
 
     return {
       success: false,
@@ -165,32 +175,44 @@ export async function* streamPresalesWorkflow(
   requirementId: string,
   rawRequirement: string,
   projectDescription: string = '',
-  systemConfig: WorkflowSystemConfig | null = null
+  systemConfig: WorkflowSystemConfig | null = null,
+  options: WorkflowRunOptions = {}
 ): AsyncIterable<{ step: string; state: Partial<PresalesState> }> {
   console.log('[Graph] 开始流式执行工作流')
 
   const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription, systemConfig)
+  const managed = createManagedAbortSignal(
+    [options.signal],
+    options.timeoutMs ?? EXECUTION_POLICY.presalesRouteTimeoutMs
+  )
 
-  // 使用 stream 方法获取状态更新流
-  const stream = await presalesGraph.stream(initialState, {
-    streamMode: 'values',
-  })
-
-  for await (const state of stream) {
-    yield {
-      step: state.currentStep,
-      state: {
-        currentStep: state.currentStep,
-        analysis: state.analysis,
-        functions: state.functions,
-        identifiedRoles: state.identifiedRoles,
-        additionalWork: state.additionalWork,
-        estimation: state.estimation,
-        cost: state.cost,
-        error: state.error,
-        isComplete: state.isComplete,
+  try {
+    const stream = await presalesGraph.stream(initialState, {
+      streamMode: 'values',
+      signal: managed.signal,
+      configurable: {
+        executionId: options.executionId,
       },
+    })
+
+    for await (const state of stream) {
+      yield {
+        step: state.currentStep,
+        state: {
+          currentStep: state.currentStep,
+          analysis: state.analysis,
+          functions: state.functions,
+          identifiedRoles: state.identifiedRoles,
+          additionalWork: state.additionalWork,
+          estimation: state.estimation,
+          cost: state.cost,
+          error: state.error,
+          isComplete: state.isComplete,
+        },
+      }
     }
+  } finally {
+    managed.dispose()
   }
 }
 

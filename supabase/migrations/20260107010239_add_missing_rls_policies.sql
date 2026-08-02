@@ -1,8 +1,8 @@
 -- =====================================================
--- eE:1� RLS Ve
+-- 补充缺失的 RLS 策略
 -- =====================================================
 
--- Requirements h - UPDATE � DELETE Ve
+-- Requirements 表 - UPDATE 和 DELETE 策略
 CREATE POLICY "users_can_update_own_project_requirements" ON requirements
   FOR UPDATE USING (
     EXISTS (
@@ -21,7 +21,7 @@ CREATE POLICY "users_can_delete_own_project_requirements" ON requirements
     )
   );
 
--- Function Modules h - INSERT, UPDATE, DELETE Ve
+-- Function Modules 表 - INSERT、UPDATE、DELETE 策略
 CREATE POLICY "users_can_insert_own_project_functions" ON function_modules
   FOR INSERT WITH CHECK (
     EXISTS (
@@ -49,7 +49,7 @@ CREATE POLICY "users_can_delete_own_project_functions" ON function_modules
     )
   );
 
--- Cost Estimates h - INSERT, UPDATE, DELETE Ve
+-- Cost Estimates 表 - INSERT、UPDATE、DELETE 策略
 CREATE POLICY "users_can_insert_own_project_cost_estimates" ON cost_estimates
   FOR INSERT WITH CHECK (
     EXISTS (

@@ -1,6 +1,13 @@
 import { generateText, Output } from 'ai'
 import { z } from 'zod'
+import type { RunnableConfig } from '@langchain/core/runnables'
 import { defaultModel } from '@/lib/ai/config'
+import {
+  EXECUTION_POLICY,
+  getRunnableSignal,
+  isAbortError,
+  withAbortSignal,
+} from '../execution-policy'
 import { getActiveTemplate } from '@/app/actions/templates'
 import { createTelemetryConfig } from '@/lib/observability/langfuse'
 import type { PresalesState, AgentAnalysisResult } from '../state'
@@ -84,7 +91,8 @@ async function getAnalysisPrompt(industry?: string | null): Promise<string> {
  * 使用 AI SDK 的 generateText + Output.object 进行结构化输出
  */
 export async function analyzeNode(
-  state: PresalesState
+  state: PresalesState,
+  config?: RunnableConfig
 ): Promise<Partial<PresalesState>> {
   // 验证输入
   if (!state.rawRequirement || state.rawRequirement.trim() === '') {
@@ -106,17 +114,24 @@ export async function analyzeNode(
       .replace('{projectDescription}', state.projectDescription || '未提供项目描述')
 
     // 调用 AI 模型进行分析
-    const { output } = await generateText({
-      model: defaultModel,
-      output: Output.object({
-        schema: requirementAnalysisSchema,
-      }),
-      prompt,
-      experimental_telemetry: createTelemetryConfig('workflow-analyze', {
-        projectId: state.projectId,
-        requirementId: state.requirementId,
-      }),
-    })
+    const { output } = await withAbortSignal(
+      [getRunnableSignal(config)],
+      EXECUTION_POLICY.workflowNodeTimeoutMs,
+      (signal) => generateText({
+        model: defaultModel,
+        output: Output.object({
+          schema: requirementAnalysisSchema,
+        }),
+        prompt,
+        abortSignal: signal,
+        maxRetries: EXECUTION_POLICY.aiMaxRetries,
+        experimental_telemetry: createTelemetryConfig('workflow-analyze', {
+          projectId: state.projectId,
+          requirementId: state.requirementId,
+          executionId: String(config?.configurable?.executionId || 'none'),
+        }),
+      })
+    )
 
     // 验证输出
     if (!output) {
@@ -152,6 +167,10 @@ export async function analyzeNode(
       error: null,
     }
   } catch (error) {
+    if (isAbortError(error, getRunnableSignal(config))) {
+      throw error
+    }
+
     console.error('[Agent] 需求分析失败:', error)
 
     return {

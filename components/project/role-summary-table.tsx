@@ -1,5 +1,7 @@
 'use client'
 
+import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Table,
   TableBody,
@@ -9,7 +11,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Users, Clock, Calendar } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Loader2, Pencil, Save, Users, Clock, Calendar, X } from 'lucide-react'
+import { toast } from 'sonner'
+import { updateProjectRoleHeadcount } from '@/app/actions/roles'
 import type { ProjectRole } from '@/app/actions/roles'
 
 interface RoleSummaryTableProps {
@@ -17,6 +23,24 @@ interface RoleSummaryTableProps {
 }
 
 export function RoleSummaryTable({ roles }: RoleSummaryTableProps) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [editingRoleId, setEditingRoleId] = useState<string | null>(null)
+  const [editingHeadcount, setEditingHeadcount] = useState(1)
+
+  const saveHeadcount = (roleId: string) => {
+    startTransition(async () => {
+      const result = await updateProjectRoleHeadcount(roleId, editingHeadcount)
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      toast.success('角色人数和成本已更新')
+      setEditingRoleId(null)
+      router.refresh()
+    })
+  }
+
   if (roles.length === 0) {
     return (
       <div className="text-center py-12">
@@ -82,7 +106,49 @@ export function RoleSummaryTable({ roles }: RoleSummaryTableProps) {
                     {days}
                   </TableCell>
                   <TableCell className="text-center">
-                    {role.headcount}
+                    {editingRoleId === role.id ? (
+                      <div className="flex items-center justify-center gap-1">
+                        <Input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={editingHeadcount}
+                          onChange={(event) => setEditingHeadcount(Number(event.target.value))}
+                          className="h-8 w-16"
+                          disabled={isPending}
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          onClick={() => saveHeadcount(role.id)}
+                          disabled={isPending}
+                        >
+                          {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          onClick={() => setEditingRoleId(null)}
+                          disabled={isPending}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 hover:text-primary"
+                        onClick={() => {
+                          setEditingRoleId(role.id)
+                          setEditingHeadcount(role.headcount)
+                        }}
+                      >
+                        {role.headcount}
+                        <Pencil className="h-3 w-3 opacity-50" />
+                      </button>
+                    )}
                   </TableCell>
                   <TableCell className="text-center">
                     <Badge variant="secondary">

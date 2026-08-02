@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { useChat, type UIMessage } from '@ai-sdk/react'
+import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,7 @@ import {
   Sparkles,
   RefreshCw,
   Zap,
+  Square,
   MessageCircle,
   ArrowLeft,
   Bot,
@@ -107,7 +108,7 @@ interface AgentProgressProps {
   onComplete?: (result: WorkflowResult) => void
 }
 
-type RunState = 'idle' | 'running' | 'success' | 'error'
+type RunState = 'idle' | 'running' | 'success' | 'error' | 'cancelled'
 
 export function AgentProgress({
   projectId,
@@ -417,6 +418,13 @@ export function AgentProgress({
     // session 状态更新后，useEffect 会检测到 pendingSendRef 并发送消息
   }
 
+  // 离开页面或切换项目/需求时取消当前分析。
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort()
+    }
+  }, [projectId, requirementId])
+
   // 计算进度百分比
   const progress = (completedSteps.length / WORKFLOW_STEPS.length) * 100
 
@@ -446,6 +454,13 @@ export function AgentProgress({
     return events
   }
 
+  const cancelWorkflow = useCallback(() => {
+    abortControllerRef.current?.abort()
+    setRunState('cancelled')
+    setCurrentStep(null)
+    toast.info('已取消分析')
+  }, [])
+
   // 运行工作流（使用流式 API）
   const runWorkflow = async () => {
     if (runState === 'running') return
@@ -457,14 +472,15 @@ export function AgentProgress({
     setCurrentStep('analyze')
 
     // 创建 AbortController 用于取消请求
-    abortControllerRef.current = new AbortController()
+    const controller = new AbortController()
+    abortControllerRef.current = controller
 
     try {
       const response = await fetch('/api/agent/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId, requirementId }),
-        signal: abortControllerRef.current.signal,
+        signal: controller.signal,
       })
 
       if (!response.ok) {
@@ -479,6 +495,8 @@ export function AgentProgress({
 
       const decoder = new TextDecoder()
       let buffer = ''
+
+      let receivedTerminalEvent = false
 
       while (true) {
         const { done, value } = await reader.read()
@@ -514,6 +532,7 @@ export function AgentProgress({
               setCompletedSteps(completed)
             }
           } else if (event === 'complete') {
+            receivedTerminalEvent = true
             // 工作流完成
             setCompletedSteps(WORKFLOW_STEPS.map((s) => s.key))
             setCurrentStep(null)
@@ -535,6 +554,7 @@ export function AgentProgress({
             // 刷新页面数据
             router.refresh()
           } else if (event === 'error') {
+            receivedTerminalEvent = true
             throw new Error(eventData.error || '工作流执行失败')
           }
         }
@@ -545,9 +565,14 @@ export function AgentProgress({
           buffer = buffer.slice(lastDoubleNewline + 2)
         }
       }
+
+      if (!receivedTerminalEvent && !controller.signal.aborted) {
+        throw new Error('分析连接已中断，请重试')
+      }
     } catch (err) {
-      // 忽略取消错误
-      if (err instanceof Error && err.name === 'AbortError') {
+      if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) {
+        setRunState('cancelled')
+        setCurrentStep(null)
         return
       }
 
@@ -560,7 +585,9 @@ export function AgentProgress({
         description: err instanceof Error ? err.message : '请重试',
       })
     } finally {
-      abortControllerRef.current = null
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null
+      }
     }
   }
 
@@ -640,6 +667,14 @@ export function AgentProgress({
           </div>
         )}
 
+        {/* 取消信息 */}
+        {runState === 'cancelled' && (
+          <div className="flex items-start gap-2 rounded-md bg-amber-50 p-3 text-sm text-amber-700">
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>分析已取消，可以重新开始。</span>
+          </div>
+        )}
+
         {/* 成功信息 */}
         {runState === 'success' && result && (
           <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">
@@ -658,28 +693,33 @@ export function AgentProgress({
 
         {/* 操作按钮 */}
         {showStartButton && (
-          <Button
-            onClick={runWorkflow}
-            disabled={runState === 'running'}
-            className="w-full"
-          >
-            {runState === 'running' ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                分析中...
-              </>
-            ) : runState === 'success' || runState === 'error' ? (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                重新分析
-              </>
-            ) : (
-              <>
-                <Sparkles className="mr-2 h-4 w-4" />
-                开始分析
-              </>
-            )}
-          </Button>
+          runState === 'running' ? (
+            <Button
+              onClick={cancelWorkflow}
+              variant="destructive"
+              className="w-full"
+            >
+              <Square className="mr-2 h-4 w-4" />
+              停止分析
+            </Button>
+          ) : (
+            <Button
+              onClick={runWorkflow}
+              className="w-full"
+            >
+              {runState === 'success' || runState === 'error' || runState === 'cancelled' ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  重新分析
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  开始分析
+                </>
+              )}
+            </Button>
+          )
         )}
       </div>
     )

@@ -7,6 +7,7 @@ import {
   generateEmbeddings,
   buildEmbeddingText,
 } from '@/lib/ai/embedding'
+import { isAbortError } from '@/lib/agents/execution-policy'
 import type { EstimateReference } from '@/types'
 
 /**
@@ -61,13 +62,16 @@ export async function getEstimateReferences(options?: {
  */
 export async function getReferencesForBreakdown(
   queryText: string,
-  limit: number = 10
+  limit: number = 10,
+  options: { signal?: AbortSignal } = {}
 ): Promise<EstimateReference[]> {
   const supabase = await createClient()
 
   // 尝试向量检索
   try {
-    const queryEmbedding = await generateEmbedding(queryText)
+    const queryEmbedding = await generateEmbedding(queryText, {
+      signal: options.signal,
+    })
 
     const { data, error } = await supabase.rpc('match_estimate_references', {
       query_embedding: JSON.stringify(queryEmbedding),
@@ -86,6 +90,10 @@ export async function getReferencesForBreakdown(
       return data
     }
   } catch (embeddingError) {
+    if (isAbortError(embeddingError, options.signal)) {
+      throw embeddingError
+    }
+
     console.warn('[RAG] 向量检索失败，回退到全局高频参考:', embeddingError)
   }
 

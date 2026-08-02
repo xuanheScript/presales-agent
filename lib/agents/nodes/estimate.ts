@@ -1,6 +1,13 @@
 import { generateText, Output } from 'ai'
 import { z } from 'zod'
+import type { RunnableConfig } from '@langchain/core/runnables'
 import { defaultModel } from '@/lib/ai/config'
+import {
+  EXECUTION_POLICY,
+  getRunnableSignal,
+  isAbortError,
+  withAbortSignal,
+} from '../execution-policy'
 import { createTelemetryConfig } from '@/lib/observability/langfuse'
 import type { PresalesState, AgentEffortEstimation } from '../state'
 
@@ -72,7 +79,8 @@ const BUFFER_ESTIMATION_PROMPT = `你是一位经验丰富的项目经理，擅�
  * 2. 评估缓冲系数
  */
 export async function estimateNode(
-  state: PresalesState
+  state: PresalesState,
+  config?: RunnableConfig
 ): Promise<Partial<PresalesState>> {
   // 验证前置条件
   if (!state.functions || state.functions.length === 0) {
@@ -147,19 +155,26 @@ export async function estimateNode(
       .replace('{baseTotalDays}', String(Math.round(baseTotalDays * 10) / 10))
 
     // 6. 调用 AI 模型评估缓冲系数
-    const { output } = await generateText({
-      model: defaultModel,
-      output: Output.object({
-        schema: bufferEstimationSchema,
-      }),
-      prompt,
-      experimental_telemetry: createTelemetryConfig('workflow-estimate', {
-        projectId: state.projectId,
-        requirementId: state.requirementId,
-        modulesCount: state.functions.length,
-        baseTotalDays,
-      }),
-    })
+    const { output } = await withAbortSignal(
+      [getRunnableSignal(config)],
+      EXECUTION_POLICY.workflowNodeTimeoutMs,
+      (signal) => generateText({
+        model: defaultModel,
+        output: Output.object({
+          schema: bufferEstimationSchema,
+        }),
+        prompt,
+        abortSignal: signal,
+        maxRetries: EXECUTION_POLICY.aiMaxRetries,
+        experimental_telemetry: createTelemetryConfig('workflow-estimate', {
+          projectId: state.projectId,
+          requirementId: state.requirementId,
+          executionId: String(config?.configurable?.executionId || 'none'),
+          modulesCount: state.functions.length,
+          baseTotalDays,
+        }),
+      })
+    )
 
     // 验证输出
     if (!output) {
@@ -202,6 +217,10 @@ export async function estimateNode(
       error: null,
     }
   } catch (error) {
+    if (isAbortError(error, getRunnableSignal(config))) {
+      throw error
+    }
+
     console.error('[Agent] 工时评估失败:', error)
 
     return {

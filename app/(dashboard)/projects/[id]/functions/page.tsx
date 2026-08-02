@@ -7,6 +7,7 @@ import { RoleSummaryTable } from '@/components/project/role-summary-table'
 import { AdditionalWorkTable } from '@/components/project/additional-work-table'
 import { getFunctionModules, getFunctionSummary } from '@/app/actions/functions'
 import { getProjectRoles, getAdditionalWorkItems, getAdditionalWorkSummary } from '@/app/actions/roles'
+import { getCostEstimate } from '@/app/actions/costs'
 import { getLatestRequirement } from '@/app/actions/requirements'
 import { getProject } from '@/app/actions/projects'
 import { DEFAULT_CONFIG } from '@/constants'
@@ -14,8 +15,8 @@ import { DEFAULT_CONFIG } from '@/constants'
 /**
  * 工时转人天（保留1位小数）
  */
-function hoursToWorkDays(hours: number): number {
-  return Math.round((hours / DEFAULT_CONFIG.WORKING_HOURS_PER_DAY) * 10) / 10
+function hoursToWorkDays(hours: number, workingHoursPerDay: number): number {
+  return Math.round((hours / workingHoursPerDay) * 10) / 10
 }
 
 interface FunctionsPageProps {
@@ -42,7 +43,7 @@ export default async function FunctionsPage({ params }: FunctionsPageProps) {
 }
 
 async function FunctionsContent({ projectId }: { projectId: string }) {
-  const [functions, summary, roles, additionalWork, additionalWorkSummary, requirement, project] = await Promise.all([
+  const [functions, summary, roles, additionalWork, additionalWorkSummary, requirement, project, cost] = await Promise.all([
     getFunctionModules(projectId),
     getFunctionSummary(projectId),
     getProjectRoles(projectId),
@@ -50,7 +51,9 @@ async function FunctionsContent({ projectId }: { projectId: string }) {
     getAdditionalWorkSummary(projectId),
     getLatestRequirement(projectId),
     getProject(projectId),
+    getCostEstimate(projectId),
   ])
+  const workingHoursPerDay = cost?.working_hours_per_day || DEFAULT_CONFIG.WORKING_HOURS_PER_DAY
 
   // 构建项目元数据，用于批量提取到参考库时自动填充上下文
   const projectMetadata = {
@@ -72,7 +75,7 @@ async function FunctionsContent({ projectId }: { projectId: string }) {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>评估工时</CardDescription>
-            <CardTitle className="text-3xl">{hoursToWorkDays(summary.totalHours)}人天</CardTitle>
+            <CardTitle className="text-3xl">{hoursToWorkDays(summary.totalHours, workingHoursPerDay)}人天</CardTitle>
           </CardHeader>
         </Card>
         <Card>
@@ -85,7 +88,7 @@ async function FunctionsContent({ projectId }: { projectId: string }) {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>总和工时</CardDescription>
-            <CardTitle className="text-3xl text-primary">{hoursToWorkDays(summary.totalHours) + additionalWorkSummary.totalDays}人天</CardTitle>
+            <CardTitle className="text-3xl text-primary">{hoursToWorkDays(summary.totalHours, workingHoursPerDay) + additionalWorkSummary.totalDays}人天</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -107,7 +110,13 @@ async function FunctionsContent({ projectId }: { projectId: string }) {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <FunctionTable projectId={projectId} functions={functions} projectMetadata={projectMetadata} />
+              <FunctionTable
+                projectId={projectId}
+                functions={functions}
+                roles={roles}
+                workingHoursPerDay={workingHoursPerDay}
+                projectMetadata={projectMetadata}
+              />
             </CardContent>
           </Card>
         </TabsContent>
