@@ -44,7 +44,7 @@ export function EstimateReferenceList({ references }: EstimateReferenceListProps
       <div className="text-center py-12">
         <p className="text-muted-foreground mb-2">暂无估算参考数据</p>
         <p className="text-sm text-muted-foreground">
-          在项目的功能明细页面中，标记评估准确的功能模块为"已验证"，然后提取到参考库
+          在项目的功能明细页面中，标记评估准确的功能模块为&quot;已验证&quot;，然后提取到参考库
         </p>
       </div>
     )

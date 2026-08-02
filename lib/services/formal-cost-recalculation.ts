@@ -1,4 +1,5 @@
 import type { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   FORMAL_COST_RULE_VERSION,
   calculateFormalCostV1,
@@ -37,6 +38,7 @@ interface AdditionalWorkSnapshot {
 
 interface CostConfigSnapshot {
   id: string
+  estimate_version_id?: string
   rule_version: string | null
   currency: string | null
   labor_cost_per_day: number | null
@@ -91,6 +93,7 @@ export async function loadFormalProjectAggregate(
     roles?: unknown
     additionalWork?: unknown
     costConfig?: unknown
+    estimateVersionId?: unknown
   }
   if (!snapshot.costConfig || typeof snapshot.costConfig !== 'object' || Array.isArray(snapshot.costConfig)) {
     throw new FormalCostRecalculationError('项目尚未生成正式成本，不能自动重算', 'COST_NOT_FOUND')
@@ -138,6 +141,9 @@ export async function loadFormalProjectAggregate(
     })),
     costConfig: {
       id: String(costConfig.id),
+      estimate_version_id: typeof snapshot.estimateVersionId === 'string'
+        ? snapshot.estimateVersionId
+        : undefined,
       rule_version: String(costConfig.rule_version),
       currency: typeof costConfig.currency === 'string' ? costConfig.currency : null,
       labor_cost_per_day: numericValue(costConfig.labor_cost_per_day, '人天单价'),
@@ -220,7 +226,14 @@ export async function mutateAndRecalculateFormalProject(
   const totalDaysByRole = new Map(result.staffingByRole.map((role) => [role.role, role.totalDays]))
   const workingHoursPerDay = result.workingHoursPerDay
 
-  const { error } = await supabase.rpc('commit_manual_cost_recalculation', {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    throw new FormalCostRecalculationError('请先登录', 'UNAUTHENTICATED')
+  }
+
+  const adminSupabase = createAdminClient()
+  const { error } = await adminSupabase.rpc('commit_manual_cost_recalculation', {
+    p_actor_user_id: user.id,
     p_project_id: projectId,
     p_expected_revision: aggregate.revision,
     p_functions: aggregate.functions.map((fn) => ({

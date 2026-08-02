@@ -5,12 +5,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FunctionTable } from '@/components/project/function-table'
 import { RoleSummaryTable } from '@/components/project/role-summary-table'
 import { AdditionalWorkTable } from '@/components/project/additional-work-table'
-import { getFunctionModules, getFunctionSummary } from '@/app/actions/functions'
-import { getProjectRoles, getAdditionalWorkItems, getAdditionalWorkSummary } from '@/app/actions/roles'
-import { getCostEstimate } from '@/app/actions/costs'
-import { getLatestRequirement } from '@/app/actions/requirements'
+import { getEstimateVersionSnapshot } from '@/app/actions/estimate-versions'
 import { getProject } from '@/app/actions/projects'
 import { DEFAULT_CONFIG } from '@/constants'
+import type { FunctionModule } from '@/types'
+import type { ProjectRole, AdditionalWorkItem } from '@/app/actions/roles'
 
 /**
  * 工时转人天（保留1位小数）
@@ -31,7 +30,7 @@ export default async function FunctionsPage({ params }: FunctionsPageProps) {
       <div>
         <h2 className="text-2xl font-bold tracking-tight">功能明细</h2>
         <p className="text-muted-foreground">
-          查看和编辑项目的功能模块列表
+          查看不可变估算版本中的功能、角色和额外工作
         </p>
       </div>
 
@@ -43,23 +42,28 @@ export default async function FunctionsPage({ params }: FunctionsPageProps) {
 }
 
 async function FunctionsContent({ projectId }: { projectId: string }) {
-  const [functions, summary, roles, additionalWork, additionalWorkSummary, requirement, project, cost] = await Promise.all([
-    getFunctionModules(projectId),
-    getFunctionSummary(projectId),
-    getProjectRoles(projectId),
-    getAdditionalWorkItems(projectId),
-    getAdditionalWorkSummary(projectId),
-    getLatestRequirement(projectId),
+  const [snapshot, project] = await Promise.all([
+    getEstimateVersionSnapshot(projectId),
     getProject(projectId),
-    getCostEstimate(projectId),
   ])
+  const functions: FunctionModule[] = snapshot?.functions || []
+  const roles = (snapshot?.roles || []) as ProjectRole[]
+  const additionalWork = (snapshot?.additionalWork || []) as AdditionalWorkItem[]
+  const cost = snapshot?.cost || null
+  const summary = {
+    totalModules: functions.length,
+    totalHours: functions.reduce((sum, fn) => sum + Number(fn.estimated_hours), 0),
+  }
+  const additionalWorkSummary = {
+    totalItems: additionalWork.length,
+    totalDays: additionalWork.reduce((sum, item) => sum + Number(item.days), 0),
+  }
   const workingHoursPerDay = cost?.working_hours_per_day || DEFAULT_CONFIG.WORKING_HOURS_PER_DAY
 
-  // 构建项目元数据，用于批量提取到参考库时自动填充上下文
   const projectMetadata = {
-    projectType: requirement?.parsed_content?.projectType,
+    projectType: snapshot?.version.parsed_requirement.projectType,
     industry: project?.industry || undefined,
-    techStack: requirement?.parsed_content?.techStack,
+    techStack: snapshot?.version.parsed_requirement.techStack,
   }
 
   return (
@@ -106,7 +110,7 @@ async function FunctionsContent({ projectId }: { projectId: string }) {
             <CardHeader>
               <CardTitle>功能模块列表</CardTitle>
               <CardDescription>
-                点击工时可以编辑，选择难度可以调整
+                版本内容不可直接修改；人工调整将创建新的估算版本
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -116,6 +120,7 @@ async function FunctionsContent({ projectId }: { projectId: string }) {
                 roles={roles}
                 workingHoursPerDay={workingHoursPerDay}
                 projectMetadata={projectMetadata}
+                readOnly
               />
             </CardContent>
           </Card>
@@ -130,7 +135,7 @@ async function FunctionsContent({ projectId }: { projectId: string }) {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <RoleSummaryTable roles={roles} />
+              <RoleSummaryTable roles={roles} readOnly />
             </CardContent>
           </Card>
         </TabsContent>

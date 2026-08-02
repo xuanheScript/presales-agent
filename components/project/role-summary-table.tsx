@@ -20,9 +20,10 @@ import type { ProjectRole } from '@/app/actions/roles'
 
 interface RoleSummaryTableProps {
   roles: ProjectRole[]
+  readOnly?: boolean
 }
 
-export function RoleSummaryTable({ roles }: RoleSummaryTableProps) {
+export function RoleSummaryTable({ roles, readOnly = false }: RoleSummaryTableProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null)
@@ -106,7 +107,7 @@ export function RoleSummaryTable({ roles }: RoleSummaryTableProps) {
                     {days}
                   </TableCell>
                   <TableCell className="text-center">
-                    {editingRoleId === role.id ? (
+                    {!readOnly && editingRoleId === role.id ? (
                       <div className="flex items-center justify-center gap-1">
                         <Input
                           type="number"
@@ -139,14 +140,14 @@ export function RoleSummaryTable({ roles }: RoleSummaryTableProps) {
                     ) : (
                       <button
                         type="button"
-                        className="inline-flex items-center gap-1 hover:text-primary"
-                        onClick={() => {
+                        className={`inline-flex items-center gap-1 ${readOnly ? '' : 'hover:text-primary'}`}
+                        onClick={readOnly ? undefined : () => {
                           setEditingRoleId(role.id)
                           setEditingHeadcount(role.headcount)
                         }}
                       >
                         {role.headcount}
-                        <Pencil className="h-3 w-3 opacity-50" />
+                        {!readOnly && <Pencil className="h-3 w-3 opacity-50" />}
                       </button>
                     )}
                   </TableCell>

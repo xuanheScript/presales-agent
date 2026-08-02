@@ -96,24 +96,25 @@ export const presalesGraph = workflow.compile()
  * 运行售前成本估算工作流
  *
  * @param projectId - 项目 ID
- * @param requirementId - 需求 ID
- * @param rawRequirement - 原始需求文本
+ * @param requirementBaselineId - 需求基线 ID
+ * @param canonicalRequirement - 规范化需求基线正文
  * @param projectDescription - 项目描述
  * @param systemConfig - 系统配置（人天成本、风险缓冲比例等）
  * @returns 工作流执行结果
  */
 export async function runPresalesWorkflow(
   projectId: string,
-  requirementId: string,
-  rawRequirement: string,
+  requirementBaselineId: string,
+  canonicalRequirement: string,
   projectDescription: string = '',
   systemConfig: WorkflowSystemConfig | null = null,
-  options: WorkflowRunOptions = {}
+  options: WorkflowRunOptions = {},
+  analysisPromptTemplate: string = ''
 ): Promise<WorkflowResult> {
   console.log('[Graph] 开始执行售前成本估算工作流:', {
     projectId,
-    requirementId,
-    requirementLength: rawRequirement.length,
+    requirementBaselineId,
+    requirementLength: canonicalRequirement.length,
     systemConfig,
   })
 
@@ -121,7 +122,14 @@ export async function runPresalesWorkflow(
 
   try {
     // 创建初始状态
-    const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription, systemConfig)
+    const initialState = createInitialState(
+      projectId,
+      requirementBaselineId,
+      canonicalRequirement,
+      projectDescription,
+      systemConfig,
+      analysisPromptTemplate
+    )
 
     return await withAbortSignal(
       [options.signal],
@@ -164,23 +172,31 @@ export async function runPresalesWorkflow(
  * 流式执行售前成本估算工作流
  *
  * @param projectId - 项目 ID
- * @param requirementId - 需求 ID
- * @param rawRequirement - 原始需求文本
+ * @param requirementBaselineId - 需求基线 ID
+ * @param canonicalRequirement - 规范化需求基线正文
  * @param projectDescription - 项目描述
  * @param systemConfig - 系统配置（人天成本、风险缓冲比例等）
  * @returns AsyncIterable 流式状态更新
  */
 export async function* streamPresalesWorkflow(
   projectId: string,
-  requirementId: string,
-  rawRequirement: string,
+  requirementBaselineId: string,
+  canonicalRequirement: string,
   projectDescription: string = '',
   systemConfig: WorkflowSystemConfig | null = null,
-  options: WorkflowRunOptions = {}
+  options: WorkflowRunOptions = {},
+  analysisPromptTemplate: string = ''
 ): AsyncIterable<{ step: string; state: Partial<PresalesState> }> {
   console.log('[Graph] 开始流式执行工作流')
 
-  const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription, systemConfig)
+  const initialState = createInitialState(
+    projectId,
+    requirementBaselineId,
+    canonicalRequirement,
+    projectDescription,
+    systemConfig,
+    analysisPromptTemplate
+  )
   const managed = createManagedAbortSignal(
     [options.signal],
     options.timeoutMs ?? EXECUTION_POLICY.presalesRouteTimeoutMs

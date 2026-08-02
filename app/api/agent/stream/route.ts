@@ -11,21 +11,27 @@ import {
   type PresalesExecutionHandle,
 } from '@/lib/agents/execution-service'
 import { createManagedAbortSignal } from '@/lib/agents/execution-policy'
-import type { WorkflowResult } from '@/lib/agents/state'
+import {
+  accumulateWorkflowUpdate,
+  assertCompletedWorkflowResult,
+  createCompleteEventAfterCommit,
+  createPendingWorkflowResult,
+  encodeSseEvent,
+} from '@/lib/agents/sse-protocol'
 
 export const maxDuration = 300
 
 interface RunRequest {
   projectId: string
-  requirementId: string
+  requirementBaselineId: string
 }
 
 export async function POST(req: Request) {
   let handle: PresalesExecutionHandle | null = null
 
   try {
-    const { projectId, requirementId }: RunRequest = await req.json()
-    const prepared = await preparePresalesExecution(projectId, requirementId)
+    const { projectId, requirementBaselineId }: RunRequest = await req.json()
+    const prepared = await preparePresalesExecution(projectId, requirementBaselineId)
     handle = await beginPresalesExecution(prepared, 'stream')
   } catch (error) {
     const status = error instanceof PresalesExecutionError ? error.status : 500
@@ -36,7 +42,6 @@ export async function POST(req: Request) {
   }
 
   const execution = handle
-  const encoder = new TextEncoder()
   const streamController = new AbortController()
   const managed = createManagedAbortSignal([req.signal, streamController.signal])
   let closed = false
@@ -51,9 +56,10 @@ export async function POST(req: Request) {
         if (closed || managed.signal.aborted) return
 
         try {
-          controller.enqueue(
-            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-          )
+          controller.enqueue(encodeSseEvent({
+            event: event as 'progress' | 'complete' | 'error',
+            data,
+          }))
         } catch {
           closed = true
           streamController.abort(new DOMException('客户端连接已断开', 'AbortError'))
@@ -76,8 +82,8 @@ export async function POST(req: Request) {
           {
             input: {
               projectId: execution.prepared.projectId,
-              requirementId: execution.prepared.requirementId,
-              requirementLength: execution.prepared.rawRequirement.length,
+              requirementBaselineId: execution.prepared.requirementBaselineId,
+              requirementLength: execution.prepared.canonicalRequirement.length,
             },
             metadata: {
               executionId: execution.executionId,
@@ -87,16 +93,7 @@ export async function POST(req: Request) {
           },
           async (observation) => {
             try {
-              const workflowResult: WorkflowResult = {
-                success: false,
-                analysis: null,
-                functions: [],
-                identifiedRoles: [],
-                additionalWork: [],
-                estimation: null,
-                cost: null,
-                error: null,
-              }
+              let workflowResult = createPendingWorkflowResult()
 
               for await (const update of streamPreparedPresalesWorkflow(execution, {
                 signal: managed.signal,
@@ -108,26 +105,16 @@ export async function POST(req: Request) {
                   error: update.state.error,
                 })
 
-                if (update.state.analysis !== undefined) workflowResult.analysis = update.state.analysis || null
-                if (update.state.functions !== undefined) workflowResult.functions = update.state.functions
-                if (update.state.identifiedRoles !== undefined) workflowResult.identifiedRoles = update.state.identifiedRoles
-                if (update.state.additionalWork !== undefined) workflowResult.additionalWork = update.state.additionalWork
-                if (update.state.estimation !== undefined) workflowResult.estimation = update.state.estimation || null
-                if (update.state.cost !== undefined) workflowResult.cost = update.state.cost || null
-                if (update.state.error !== undefined) workflowResult.error = update.state.error || null
-                workflowResult.success = Boolean(update.state.isComplete && !update.state.error)
+                workflowResult = accumulateWorkflowUpdate(workflowResult, update.state)
 
-                if (update.state.error) {
-                  throw new PresalesExecutionError(update.state.error, 500)
+                if (workflowResult.error) {
+                  throw new PresalesExecutionError(workflowResult.error, 500)
                 }
               }
 
-              if (!workflowResult.success) {
-                throw new PresalesExecutionError('工作流未完整结束', 500)
-              }
+              assertCompletedWorkflowResult(workflowResult)
 
               // 只有数据库事务提交成功后才通知客户端完成。
-              await completePresalesExecution(execution, workflowResult)
               observation?.update({
                 output: {
                   success: true,
@@ -147,15 +134,20 @@ export async function POST(req: Request) {
           }
         )
 
-        sendEvent('complete', {
-          success: true,
-          executionId: execution.executionId,
-          data: lastResult,
-        })
+        const completeEvent = await createCompleteEventAfterCommit(
+          execution.executionId,
+          lastResult,
+          async (result) => completePresalesExecution(execution, result)
+        )
+        sendEvent(completeEvent.event, completeEvent.data)
         close()
       } catch (error) {
         const terminalStatus = classifyExecutionError(error, managed.signal)
-        await finishPresalesExecution(execution, terminalStatus, error)
+        try {
+          await finishPresalesExecution(execution, terminalStatus, error)
+        } catch (finishError) {
+          console.error('[SSE] Agent 执行终态保存失败:', finishError)
+        }
 
         if (!managed.signal.aborted) {
           sendEvent('error', {

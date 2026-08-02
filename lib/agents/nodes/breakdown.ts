@@ -1,6 +1,6 @@
-import { generateText } from 'ai'
+import { generateText, Output } from 'ai'
 import type { RunnableConfig } from '@langchain/core/runnables'
-import { defaultModel } from '@/lib/ai/config'
+import { defaultModelGateway, type ModelGateway } from '@/lib/ai/model-gateway'
 import {
   EXECUTION_POLICY,
   getRunnableSignal,
@@ -10,218 +10,367 @@ import {
 import { createTelemetryConfig } from '@/lib/observability/langfuse'
 import { getReferencesForBreakdown, incrementReferenceUsage } from '@/app/actions/estimate-references'
 import type { EstimateReference } from '@/types'
-import type { PresalesState, AgentFunctionModule, IdentifiedRole, AdditionalWorkItem } from '../state'
-
-/**
- * CSV 解析工具函数
- */
-function parseCSVLine(line: string): string[] {
-  const result: string[] = []
-  let current = ''
-  let inQuotes = false
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i]
-    if (char === '"') {
-      inQuotes = !inQuotes
-    } else if (char === ',' && !inQuotes) {
-      result.push(current.trim())
-      current = ''
-    } else {
-      current += char
-    }
-  }
-  result.push(current.trim())
-  return result
-}
-
-/**
- * 解析 CSV 输出为结构化数据
- */
-function parseBreakdownCSV(text: string): {
-  identifiedRoles: IdentifiedRole[]
-  modules: AgentFunctionModule[]
-  additionalWork: AdditionalWorkItem[]
-} {
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l)
-
-  const identifiedRoles: IdentifiedRole[] = []
-  const moduleMap = new Map<string, AgentFunctionModule>()
-  const additionalWork: AdditionalWorkItem[] = []
-
-  let currentSection = ''
-
-  for (const line of lines) {
-    // 检测分区标记（支持带或不带 ### 前缀）
-    if (line === 'ROLES' || line.startsWith('### ROLES') || line.startsWith('###ROLES')) {
-      currentSection = 'roles'
-      continue
-    }
-    if (line === 'MODULES' || line.startsWith('### MODULES') || line.startsWith('###MODULES')) {
-      currentSection = 'modules'
-      continue
-    }
-    if (line === 'ADDITIONAL' || line.startsWith('### ADDITIONAL') || line.startsWith('###ADDITIONAL')) {
-      currentSection = 'additional'
-      continue
-    }
-
-    // 跳过表头
-    if (line.startsWith('角色,') || line.startsWith('模块名,') || line.startsWith('工作项,')) {
-      continue
-    }
-
-    // 跳过空行和分隔符
-    if (!line || line.startsWith('---') || line.startsWith('```')) {
-      continue
-    }
-
-    const fields = parseCSVLine(line)
-
-    if (currentSection === 'roles' && fields.length >= 3) {
-      identifiedRoles.push({
-        role: fields[0],
-        responsibility: fields[1],
-        headcount: parseInt(fields[2]) || 1,
-      })
-    } else if (currentSection === 'modules' && fields.length >= 4) {
-      // 紧凑格式：模块名,功能名,描述,角色工时
-      // 角色工时格式：产品经理:1;UI设计师:0.5;前端开发:2
-      const [moduleName, functionName, description, roleEstimatesStr] = fields
-
-      // 解析角色工时
-      const roleEstimates = roleEstimatesStr.split(';').map(item => {
-        const [role, daysStr] = item.split(':')
-        return {
-          role: role?.trim() || '',
-          days: parseFloat(daysStr) || 0,
-          reason: undefined,
-        }
-      }).filter(r => r.role && r.days > 0)
-
-      moduleMap.set(`${moduleName}|${functionName}`, {
-        moduleName,
-        functionName,
-        description,
-        difficultyLevel: 'medium', // 默认值，保持类型兼容
-        roleEstimates,
-        dependencies: [],
-      })
-    } else if (currentSection === 'additional' && fields.length >= 3) {
-      // 工作项,人天,角色列表
-      additionalWork.push({
-        workItem: fields[0],
-        days: parseFloat(fields[1]) || 0,
-        assignedRoles: fields[2].split(';').map(r => r.trim()).filter(r => r),
-      })
-    }
-  }
-
-  return {
-    identifiedRoles,
-    modules: Array.from(moduleMap.values()),
-    additionalWork,
-  }
-}
-
-/**
- * 功能拆解提示词 - CSV 格式输出
- */
-const BREAKDOWN_PROMPT = `你是一位专业的软件项目工时评估专家。
-
-根据需求文档完成以下任务，并以 CSV 格式输出结果。
-
-## 任务
-1. 识别项目所需的开发角色
-2. 将项目拆解为详细的功能模块
-3. 为每个功能评估各角色的工时（人天）
-4. 评估额外的非功能开发工作
-
-## 角色参考
-- Web/移动应用：产品经理、UI/UX设计师、前端开发、后端开发、小程序开发、测试工程师
-- 嵌入式系统：嵌入式工程师、硬件工程师、驱动开发、固件工程师、测试工程师
-- 数据平台：数据工程师、ETL开发、数据分析师、后端开发、测试工程师
-
-## 工时评估原则
-| 复杂度 | 工时范围 | 判断标准 |
-|-------|---------|---------|
-| 简单 | 1-3人天 | 单一功能，无复杂逻辑，标准CRUD |
-| 中等 | 3-8人天 | 多个子功能，有业务逻辑，需要多表关联 |
-| 复杂 | 8-15人天 | 涉及多系统交互，复杂算法，第三方对接 |
-| 非常复杂 | 15+人天 | 全新领域，高度定制化，核心业务逻辑 |
+import type { PresalesState, AgentFunctionModule } from '../state'
+import {
+  additionalWorkSchema,
+  roleCatalogSchema,
+  validateAdditionalWork,
+  validateRoleCatalog,
+} from './breakdown-catalogs'
+import {
+  assignFunctionIds,
+  BREAKDOWN_PROTOCOL_VERSION,
+  mergeRoleEffortBatches,
+  partitionFunctionBatches,
+  roleEffortBatchItemSchema,
+  validateRoleEffortBatch,
+  type FunctionWithStableId,
+  type RoleWithStableId,
+} from './breakdown-role-estimation'
+import {
+  chunkRequirement,
+  checkFunctionDiscovery,
+  createFunctionDiscoveryEvidenceLines,
+  evidenceAnchoredFunctionDiscoverySchema,
+  mergeFunctionDiscoveries,
+  resolveEvidenceAnchoredFunctionDiscovery,
+  getSourceContextText,
+  getSourceFocusText,
+  type FunctionDiscoveryEvidenceLine,
+  type RequirementSourceChunk,
+  type ValidatedFunctionDiscovery,
+} from './breakdown-function-discovery'
 
 
+function buildFunctionDiscoveryPrompt(
+  source: RequirementSourceChunk,
+  state: PresalesState,
+  existingFunctions: Array<{ moduleName: string; functionName: string }>,
+  evidenceLines: FunctionDiscoveryEvidenceLine[]
+): string {
+  const contextText = getSourceContextText(source)
+  const focusText = getSourceFocusText(source)
+  const evidenceCatalog = evidenceLines
+    .map(({ evidenceId, quote }) => `${evidenceId} | ${quote}`)
+    .join('\n')
+  const existingCatalog = existingFunctions.length > 0
+    ? existingFunctions
+      .map(({ moduleName, functionName }) => `- ${moduleName} | ${functionName}`)
+      .join('\n')
+    : '无，这是第一个需求切片。'
 
-### 复杂度判断因素
-- 是否涉及第三方API对接
-- 是否有复杂业务逻辑（如分账、库存、权限）
-- 是否需要多端协作
-- 是否有特殊交互设计
-- 是否涉及支付、安全等敏感功能
-- 是否需要数据迁移或兼容
+  return `从当前有界需求切片中发现可独立估算的软件功能，并返回结构化结果。
 
+项目描述：${state.projectDescription || '未提供项目描述'}
+来源 ID：${source.sourceId}
+切片序号：${source.ordinal + 1}
 
+仅供理解边界的上一切片上下文（禁止从这里返回功能或引用证据）：
+---
+${contextText || '无'}
 ---
 
-**项目描述**：
-{projectDescription}
-
-**原始需求文档**：
-{rawRequirement}
-
+当前必须覆盖的焦点文本：
+---
+${focusText}
 ---
 
-## 输出格式要求
+当前焦点的可引用证据目录（必须通过 evidenceId 选择，不要复制或改写原文）：
+---
+${evidenceCatalog}
+---
 
-严格按以下 CSV 格式输出，不要输出任何解释文字：
+此前切片已经采用的功能命名目录：
+${existingCatalog}
 
-### ROLES
-角色,职责,人数
-产品经理,需求分析原型设计,1
-UI设计师,界面交互设计,1
-...
+规则：
+1. sourceId 必须原样返回 ${source.sourceId}。
+2. 只识别“当前必须覆盖的焦点文本”能够直接支持的功能，不得从上下文或常识补充功能。
+3. 每个功能返回模块名、功能名、简明描述和一个 evidenceId；evidenceId 必须来自可引用证据目录。
+4. 服务端会使用 evidenceId 对应的原文作为证据，不要返回、复制或改写证据文本。
+5. 同一业务功能与既有目录一致时，必须复用已有模块名和功能名；只有焦点文本明确提出新功能时才创建新名称。
+6. 焦点文本有功能时 coverageStatus 返回 functions，并返回 1 到 12 个功能。
+7. 焦点文本只有背景、约束或非功能要求，没有可独立估算的软件功能时，coverageStatus 返回 no_functions 且 functions 返回空数组。
+8. 不要返回角色、角色工时、额外工作或来源之外的功能。`
+}
 
-### MODULES
-模块名,功能名,描述,角色工时
-用户模块,微信授权登录,获取微信号码完成注册,产品经理:1;UI设计师:0.5;小程序开发:2;后端开发:2;测试工程师:1
-...
+export async function discoverFunctions(
+  sources: RequirementSourceChunk[],
+  state: PresalesState,
+  signal: AbortSignal,
+  modelGateway: ModelGateway,
+  config?: RunnableConfig
+): Promise<AgentFunctionModule[]> {
+  const discoveries: ValidatedFunctionDiscovery[] = []
+  const existingFunctions: Array<{ moduleName: string; functionName: string }> = []
 
-### ADDITIONAL
-工作项,人天,角色列表
-需求评审,2,产品经理
-联调测试,3,前端开发;后端开发;测试工程师
-...
+  for (let index = 0; index < sources.length; index++) {
+    const source = sources[index]
+    const evidenceLines = createFunctionDiscoveryEvidenceLines(source)
+    const result = await generateText({
+      model: modelGateway.model,
+      output: Output.object({ schema: evidenceAnchoredFunctionDiscoverySchema }),
+      maxOutputTokens: 4096,
+      temperature: 0.2,
+      maxRetries: modelGateway.maxRetries,
+      abortSignal: signal,
+      system: '你是专业的软件需求分析师。严格基于当前有界来源切片发现功能，并从服务端证据目录选择证据 ID。',
+      prompt: buildFunctionDiscoveryPrompt(
+        source,
+        state,
+        existingFunctions,
+        evidenceLines
+      ),
+      experimental_telemetry: createTelemetryConfig('workflow-breakdown-function-discovery', {
+        protocolVersion: BREAKDOWN_PROTOCOL_VERSION,
+        projectId: state.projectId,
+        requirementBaselineId: state.requirementBaselineId,
+        executionId: String(config?.configurable?.executionId || 'none'),
+        sourceId: source.sourceId,
+        sourceIndex: String(index + 1),
+        sourceCount: String(sources.length),
+        sourceChars: String(source.text.length),
+        sourceEstimatedTokens: String(source.estimatedTokens),
+        evidenceLineCount: String(evidenceLines.length),
+      }),
+    })
 
-注意：
-1. 要保证拆解功能模块的完整性
-2. 角色工时格式为 角色名:人天，多个角色用分号分隔
-3. 每个功能的所有参与角色工时写在一行
-4. 不要遗漏任何角色的工时评估
+    if (result.finishReason !== 'stop' || !result.output) {
+      throw new Error(`功能发现切片 ${index + 1}/${sources.length} 未完整结束 (${result.finishReason})`)
+    }
 
-{referenceSection}`
+    const resolvedOutput = resolveEvidenceAnchoredFunctionDiscovery(
+      evidenceLines,
+      result.output
+    )
+    const validation = checkFunctionDiscovery(source, resolvedOutput)
+    if (!validation.success) {
+      throw new Error(validation.issue.message)
+    }
+    const discovery = validation.discovery
 
-/**
- * 将参考库数据格式化为 prompt 片段
- */
-function formatReferencesForPrompt(references: EstimateReference[]): string {
-  if (references.length === 0) return ''
+    discoveries.push(discovery)
+    for (const candidate of discovery.functions) {
+      const identity = `${candidate.moduleName.normalize('NFKC').trim()}\0${candidate.functionName.normalize('NFKC').trim()}`
+        .toLocaleLowerCase('zh-CN')
+      const exists = existingFunctions.some((item) => (
+        `${item.moduleName.normalize('NFKC').trim()}\0${item.functionName.normalize('NFKC').trim()}`
+          .toLocaleLowerCase('zh-CN') === identity
+      ))
+      if (!exists) {
+        existingFunctions.push({
+          moduleName: candidate.moduleName,
+          functionName: candidate.functionName,
+        })
+      }
+    }
+  }
 
-  const lines = references.map((ref) => {
-    const roleStr = ref.role_estimates
-      .map((r) => `${r.role}:${r.days}`)
-      .join(';')
-    return `${ref.module_name},${ref.function_name},${ref.description || ''},${roleStr}`
+  return mergeFunctionDiscoveries(sources, discoveries)
+}
+
+function formatRoleEffortReferences(references: EstimateReference[]): string {
+  if (references.length === 0) return '无可用历史参考，请根据当前功能复杂度独立评估。'
+
+  return references.map((reference) => {
+    const efforts = reference.role_estimates
+      .map((estimate) => `${estimate.role}:${estimate.days}人天`)
+      .join('；')
+    return `- ${reference.module_name}/${reference.function_name}：${efforts || '无角色工时明细'}`
+  }).join('\n')
+}
+
+function buildRoleEffortPrompt(
+  batch: FunctionWithStableId[],
+  roles: RoleWithStableId[],
+  references: EstimateReference[]
+): string {
+  const roleCatalog = roles
+    .map(({ roleId, role }) => `- ${roleId} | ${role.role} | ${role.responsibility}`)
+    .join('\n')
+  const functionCatalog = batch
+    .map(({ functionId, module }) => (
+      `- ${functionId} | ${module.moduleName} | ${module.functionName} | ${module.description}`
+    ))
+    .join('\n')
+
+  return `你是一位专业的软件项目工时评估专家。
+
+请只评估当前批次中每个功能的角色工时，并返回结构化数组。
+
+## 角色目录
+${roleCatalog}
+
+## 当前功能批次
+${functionCatalog}
+
+## 历史验证工时参考
+${formatRoleEffortReferences(references)}
+
+## 规则
+1. 每个输入 FUN-* 必须恰好返回一次，不得遗漏、重复或增加功能。
+2. roleId 必须原样取自角色目录，不得创建新角色。
+3. 每个功能至少分配一个角色，days 表示该角色完成该功能所需的人天。
+4. days 必须大于 0 且不超过 120；复杂或明显偏离参考规模时填写 reason。
+5. 不要返回模块名、功能名、角色名或额外工作，只通过 ID 关联。`
+}
+
+async function generateRoleCatalog(
+  functions: FunctionWithStableId[],
+  state: PresalesState,
+  signal: AbortSignal,
+  modelGateway: ModelGateway,
+  config?: RunnableConfig
+): Promise<{ roles: ReturnType<typeof validateRoleCatalog>['roles']; rolesWithIds: RoleWithStableId[] }> {
+  const functionCatalog = functions
+    .map(({ functionId, module }) => `- ${functionId} | ${module.moduleName} | ${module.functionName}`)
+    .join('\n')
+  const analysis = state.analysis!
+  const result = await generateText({
+    model: modelGateway.model,
+    output: Output.object({ schema: roleCatalogSchema }),
+    maxOutputTokens: 2048,
+    temperature: 0.2,
+    maxRetries: modelGateway.maxRetries,
+    abortSignal: signal,
+    system: '你是专业的软件项目团队规划专家。只返回当前项目确实需要的角色目录。',
+    prompt: `根据项目信息和已发现功能生成有界角色目录。
+
+项目描述：${state.projectDescription || '未提供'}
+项目类型：${analysis.projectType}
+技术栈：${analysis.techStack.join('、') || '未指定'}
+非功能性需求：${JSON.stringify(analysis.nonFunctionalRequirements)}
+
+功能目录：
+${functionCatalog}
+
+规则：
+1. 只返回完成这些功能所需的角色，不得返回功能工时。
+2. 角色名称清晰稳定，不要创建同义重复角色。
+3. headcount 表示建议人数，必须是 1 到 50 的整数。
+4. 最多返回 16 个角色。`,
+    experimental_telemetry: createTelemetryConfig('workflow-breakdown-role-catalog', {
+      protocolVersion: BREAKDOWN_PROTOCOL_VERSION,
+      projectId: state.projectId,
+      requirementBaselineId: state.requirementBaselineId,
+      executionId: String(config?.configurable?.executionId || 'none'),
+      functionsCount: String(functions.length),
+    }),
   })
 
-  return `
-## 历史验证参考（仅供参考，请根据实际需求独立判断）
+  if (result.finishReason !== 'stop' || !result.output) {
+    throw new Error(`角色目录输出未完整结束 (${result.finishReason})`)
+  }
 
-以下是历史项目中经过验证的功能工时评估，供你参考类似功能的工时规模：
+  return validateRoleCatalog(result.output)
+}
 
-模块名,功能名,描述,角色工时
-${lines.join('\n')}
+async function generateAdditionalWork(
+  functions: FunctionWithStableId[],
+  roles: RoleWithStableId[],
+  state: PresalesState,
+  signal: AbortSignal,
+  modelGateway: ModelGateway,
+  config?: RunnableConfig
+) {
+  const functionCatalog = functions
+    .map(({ functionId, module }) => `- ${functionId} | ${module.moduleName} | ${module.functionName}`)
+    .join('\n')
+  const roleCatalog = roles
+    .map(({ roleId, role }) => `- ${roleId} | ${role.role} | ${role.responsibility}`)
+    .join('\n')
+  const analysis = state.analysis!
+  const result = await generateText({
+    model: modelGateway.model,
+    output: Output.object({ schema: additionalWorkSchema }),
+    maxOutputTokens: 3072,
+    temperature: 0.2,
+    maxRetries: modelGateway.maxRetries,
+    abortSignal: signal,
+    system: '你是专业的软件项目规划专家。识别未包含在功能工时中的项目级额外工作。',
+    prompt: `识别当前项目必要的非功能开发和项目级额外工作。
 
-注意：以上仅为参考，实际工时应根据本项目具体需求和复杂度独立评估。`
+项目描述：${state.projectDescription || '未提供'}
+项目类型：${analysis.projectType}
+风险：${analysis.risks.join('；') || '无明确风险'}
+非功能性需求：${JSON.stringify(analysis.nonFunctionalRequirements)}
+
+功能目录：
+${functionCatalog}
+
+角色目录：
+${roleCatalog}
+
+规则：
+1. 只返回架构设计、需求评审、联调测试、部署上线等没有包含在单功能工时中的项目级工作，避免重复计费。
+2. days 是整个工作项的总人天，不是每个角色各自的人天。
+3. assignedRoleIds 必须来自角色目录，同一工作项不得重复角色。
+4. 如果没有必要的额外工作，返回空 items 数组。
+5. 最多返回 24 项，单项不超过 120 人天。`,
+    experimental_telemetry: createTelemetryConfig('workflow-breakdown-additional-work', {
+      protocolVersion: BREAKDOWN_PROTOCOL_VERSION,
+      projectId: state.projectId,
+      requirementBaselineId: state.requirementBaselineId,
+      executionId: String(config?.configurable?.executionId || 'none'),
+      functionsCount: String(functions.length),
+      rolesCount: String(roles.length),
+    }),
+  })
+
+  if (result.finishReason !== 'stop' || !result.output) {
+    throw new Error(`额外工作输出未完整结束 (${result.finishReason})`)
+  }
+
+  return validateAdditionalWork(state.requirementBaselineId, result.output, roles)
+    .map(({ item }) => item)
+}
+
+async function estimateRoleEfforts(
+  functions: FunctionWithStableId[],
+  roles: RoleWithStableId[],
+  references: EstimateReference[],
+  signal: AbortSignal,
+  state: PresalesState,
+  modelGateway: ModelGateway,
+  config?: RunnableConfig
+): Promise<AgentFunctionModule[]> {
+  const batches = partitionFunctionBatches(functions)
+  const batchResults = []
+
+  for (let index = 0; index < batches.length; index++) {
+    const batch = batches[index]
+    const result = await generateText({
+      model: modelGateway.model,
+      output: Output.array({
+        name: 'FunctionRoleEffortBatch',
+        description: '当前批次每个功能的角色工时估算',
+        element: roleEffortBatchItemSchema,
+      }),
+      maxOutputTokens: 4096,
+      temperature: 0.2,
+      maxRetries: modelGateway.maxRetries,
+      abortSignal: signal,
+      system: '你是专业的软件项目工时评估专家。严格使用输入提供的功能 ID 和角色 ID。',
+      prompt: buildRoleEffortPrompt(batch, roles, references),
+      experimental_telemetry: createTelemetryConfig('workflow-breakdown-role-effort', {
+        protocolVersion: BREAKDOWN_PROTOCOL_VERSION,
+        projectId: state.projectId,
+        requirementBaselineId: state.requirementBaselineId,
+        executionId: String(config?.configurable?.executionId || 'none'),
+        batchIndex: String(index + 1),
+        batchCount: String(batches.length),
+        functionsCount: String(batch.length),
+      }),
+    })
+
+    if (result.finishReason !== 'stop' || !result.output) {
+      throw new Error(`角色工时批次 ${index + 1}/${batches.length} 未完整结束 (${result.finishReason})`)
+    }
+
+    batchResults.push(validateRoleEffortBatch(batch, result.output, roles))
+  }
+
+  return mergeRoleEffortBatches(functions, batchResults)
 }
 
 /**
@@ -231,7 +380,8 @@ ${lines.join('\n')}
  */
 export async function breakdownNode(
   state: PresalesState,
-  config?: RunnableConfig
+  config?: RunnableConfig,
+  modelGateway: ModelGateway = defaultModelGateway
 ): Promise<Partial<PresalesState>> {
   // 验证前置条件
   if (!state.analysis) {
@@ -242,111 +392,79 @@ export async function breakdownNode(
   }
 
   try {
-    // 查询相关估算参考（使用 analysis 结果构造语义查询文本）
-    let referenceSection = ''
-    let usedReferenceIds: string[] = []
-
-    try {
-      // 用 projectType + keyFeatures 构造语义查询，比直接用 rawRequirement 更精准
-      const queryText = [
-        state.analysis.projectType,
-        ...(state.analysis.keyFeatures || []),
-      ]
-        .filter(Boolean)
-        .join(' ')
-
-      const references = await getReferencesForBreakdown(queryText, 10, {
-        signal: getRunnableSignal(config),
-      })
-
-      if (references.length > 0) {
-        referenceSection = formatReferencesForPrompt(references)
-        usedReferenceIds = references.map((r) => r.id)
-        console.log('[Agent] 注入估算参考:', {
-          queryText: queryText.substring(0, 100),
-          referenceCount: references.length,
-        })
-      }
-    } catch (refError) {
-      if (isAbortError(refError, getRunnableSignal(config))) {
-        throw refError
-      }
-
-      // 参考查询失败不阻塞主流程
-      console.warn('[Agent] 获取估算参考失败，继续执行:', refError)
-    }
-
-    // 构建提示词
-    // 注意：不注入 analysis 结果到 breakdown 提示词中
-    // 当需求文档详细时，analysis 的摘要会产生锚定效应，导致功能拆解偏粗
-    // breakdownNode 直接基于 rawRequirement 拆解，能获得更准确的粒度
-    const prompt = BREAKDOWN_PROMPT
-      .replace('{projectDescription}', state.projectDescription || '未提供项目描述')
-      .replace('{rawRequirement}', state.rawRequirement)
-      .replace('{referenceSection}', referenceSection)
-
-    // 调用 AI 模型进行功能拆解（CSV 格式）
-    const result = await withAbortSignal(
+    const { functions, identifiedRoles, additionalWork, usedReferenceIds } = await withAbortSignal(
       [getRunnableSignal(config)],
       EXECUTION_POLICY.workflowNodeTimeoutMs,
-      (signal) => generateText({
-        model: defaultModel,
-        maxOutputTokens: 8192,
-        temperature: 0.3,
-        maxRetries: EXECUTION_POLICY.aiMaxRetries,
-        abortSignal: signal,
-        system: `你是一个专业的软件项目工时评估专家。严格按照要求的 CSV 格式输出，不要输出任何解释文字。`,
-        prompt,
-        experimental_telemetry: createTelemetryConfig('workflow-breakdown', {
-          projectId: state.projectId,
-          requirementId: state.requirementId,
-          executionId: String(config?.configurable?.executionId || 'none'),
-        }),
-      })
+      async (signal) => {
+        // 参考检索、功能发现及后续调用共享同一个节点级 deadline。
+        let references: EstimateReference[] = []
+        let usedReferenceIds: string[] = []
+
+        try {
+          const queryText = [
+            state.analysis!.projectType,
+            ...(state.analysis!.keyFeatures || []),
+          ]
+            .filter(Boolean)
+            .join(' ')
+
+          references = await getReferencesForBreakdown(queryText, 10, { signal })
+
+          if (references.length > 0) {
+            usedReferenceIds = references.map((reference) => reference.id)
+            console.log('[Agent] 注入估算参考:', {
+              queryLength: queryText.length,
+              referenceCount: references.length,
+            })
+          }
+        } catch (refError) {
+          if (isAbortError(refError, signal)) {
+            throw refError
+          }
+
+          // 参考查询失败不阻塞主流程
+          console.warn('[Agent] 获取估算参考失败，继续执行:', refError)
+        }
+
+        const sources = chunkRequirement(
+          state.requirementBaselineId,
+          state.canonicalRequirement
+        )
+        const modules = await discoverFunctions(sources, state, signal, modelGateway, config)
+        const functionsWithIds = assignFunctionIds(state.requirementBaselineId, modules)
+        const { roles: identifiedRoles, rolesWithIds } = await generateRoleCatalog(
+          functionsWithIds,
+          state,
+          signal,
+          modelGateway,
+          config
+        )
+        const additionalWork = await generateAdditionalWork(
+          functionsWithIds,
+          rolesWithIds,
+          state,
+          signal,
+          modelGateway,
+          config
+        )
+        const estimatedFunctions = await estimateRoleEfforts(
+          functionsWithIds,
+          rolesWithIds,
+          references,
+          signal,
+          state,
+          modelGateway,
+          config
+        )
+
+        return {
+          functions: estimatedFunctions,
+          identifiedRoles,
+          additionalWork,
+          usedReferenceIds,
+        }
+      }
     )
-
-    // 调试：打印模型返回的完整结果
-    console.log('[Agent] generateText 返回结果:', {
-      textLength: result.text?.length,
-      finishReason: result.finishReason,
-      usage: result.usage,
-    })
-
-    // 打印原始 CSV 输出
-    if (result.text) {
-      console.log('[Agent] 模型 CSV 输出 (前2000字符):', result.text.substring(0, 2000))
-    }
-
-    // 截断输出可能形成“合法但不完整”的 CSV，必须失败关闭。
-    if (result.finishReason !== 'stop') {
-      return {
-        error: `功能拆解输出未完整结束 (${result.finishReason})，请缩小需求范围后重试`,
-        currentStep: 'breakdown',
-      }
-    }
-
-    // 解析 CSV 输出
-    if (!result.text) {
-      return {
-        error: '功能拆解未返回有效结果',
-        currentStep: 'breakdown',
-      }
-    }
-
-    const parsed = parseBreakdownCSV(result.text)
-
-    // 验证输出
-    if (parsed.modules.length === 0) {
-      console.error('[Agent] CSV 解析结果为空，原始文本:', result.text)
-      return {
-        error: '功能拆解 CSV 解析失败，未找到功能模块',
-        currentStep: 'breakdown',
-      }
-    }
-
-    const functions = parsed.modules
-    const identifiedRoles = parsed.identifiedRoles
-    const additionalWork = parsed.additionalWork
 
     // 计算总人天（功能模块 + 额外工作）
     const moduleTotalDays = functions.reduce(

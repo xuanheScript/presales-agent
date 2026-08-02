@@ -10,8 +10,8 @@ import { createTelemetryConfig, flushLangfuse } from '@/lib/observability/langfu
 import { createManagedAbortSignal, EXECUTION_POLICY } from '@/lib/agents/execution-policy'
 import { getProject } from '@/app/actions/projects'
 import { getLatestRequirement } from '@/app/actions/requirements'
-import { getFunctionModules } from '@/app/actions/functions'
-import { getCostEstimate } from '@/app/actions/costs'
+import { createClient } from '@/lib/supabase/server'
+import { getEstimateVersionSnapshot } from '@/app/actions/estimate-versions'
 import { saveChatMessages } from '@/app/actions/chat-sessions'
 import {
   getOrCreateElicitationSession,
@@ -109,12 +109,9 @@ async function handleInternalMode({
   sessionId?: string
   signal: AbortSignal
 }) {
-  // 获取项目上下文信息
-  const [project, requirement, functions, costEstimate] = await Promise.all([
+  const [project, snapshot] = await Promise.all([
     getProject(projectId),
-    getLatestRequirement(projectId),
-    getFunctionModules(projectId),
-    getCostEstimate(projectId),
+    getEstimateVersionSnapshot(projectId, { pointer: 'latest' }),
   ])
 
   if (!project) {
@@ -124,17 +121,17 @@ async function handleInternalMode({
     )
   }
 
-  // 需要 requirementId 来支持工具调用
-  const requirementId = requirement?.id || ''
+  const editableRequirement = snapshot ? null : await getLatestRequirement(projectId)
 
-  // 创建带有上下文的工具集
+  // 已进入不可变版本流程后，不再把需求基线 ID 当作原始需求 ID。
+  // 聊天写工具会拒绝覆盖正式需求/估算；未确认基线时仍可编辑最新需求草稿。
   const tools = createChatTools({
     projectId,
-    requirementId,
+    requirementId: editableRequirement?.id || null,
   })
 
   // 构建系统提示词，包含项目上下文
-  const systemPrompt = buildInternalSystemPrompt(project, requirement, functions, costEstimate)
+  const systemPrompt = buildInternalSystemPrompt(project, snapshot)
 
   // 将 UI 消息转换为模型消息格式
   const modelMessages = await convertToModelMessages(messages)
@@ -267,9 +264,38 @@ async function handleElicitationMode({
     )
   }
 
-  // 获取原始需求文本
-  const requirement = await getLatestRequirement(projectId)
-  const rawRequirement = requirement?.raw_content || undefined
+  // 澄清上下文优先绑定会话开始时的正式版本，旧会话再回退到当前正式需求或最新草稿。
+  const supabase = await createClient()
+  let rawRequirement: string | undefined
+  if (session.input_requirement_baseline_id) {
+    const { data: inputBaseline } = await supabase
+      .from('requirement_baselines')
+      .select('canonical_content')
+      .eq('id', session.input_requirement_baseline_id)
+      .eq('project_id', projectId)
+      .maybeSingle()
+    rawRequirement = inputBaseline?.canonical_content
+  }
+  if (!rawRequirement) {
+    const { data: currentProject } = await supabase
+      .from('projects')
+      .select('current_requirement_baseline_id')
+      .eq('id', projectId)
+      .maybeSingle()
+    if (currentProject?.current_requirement_baseline_id) {
+      const { data: currentBaseline } = await supabase
+        .from('requirement_baselines')
+        .select('canonical_content')
+        .eq('id', currentProject.current_requirement_baseline_id)
+        .eq('project_id', projectId)
+        .maybeSingle()
+      rawRequirement = currentBaseline?.canonical_content
+    }
+  }
+  if (!rawRequirement) {
+    const requirement = await getLatestRequirement(projectId)
+    rawRequirement = requirement?.raw_content || undefined
+  }
 
   let completionIntent: { summary: string } | null = null
 
@@ -429,36 +455,35 @@ function buildElicitationMeta(session: NonNullable<Awaited<ReturnType<typeof get
  */
 function buildInternalSystemPrompt(
   project: Awaited<ReturnType<typeof getProject>>,
-  requirement: Awaited<ReturnType<typeof getLatestRequirement>>,
-  functions: Awaited<ReturnType<typeof getFunctionModules>>,
-  costEstimate: Awaited<ReturnType<typeof getCostEstimate>>
+  snapshot: Awaited<ReturnType<typeof getEstimateVersionSnapshot>>
 ): string {
+  const functions = snapshot?.functions || []
+  const costEstimate = snapshot?.cost || null
+  const parsedRequirement = snapshot?.version.parsed_requirement
+  const baselineId = snapshot?.version.requirement_baseline_id
+  const versionLabel = snapshot
+    ? `v${snapshot.version.revision_no} (${snapshot.version.id})`
+    : '尚未生成'
   let contextInfo = `# 当前项目信息
 
 **项目名称**：${project?.name || '未命名'}
 **项目描述**：${project?.description || '无'}
 **行业**：${project?.industry || '未指定'}
 **状态**：${project?.status || 'draft'}
+**内部估算版本**：${versionLabel}
+**绑定需求基线**：${baselineId || '尚未确认'}
 `
 
-  // 添加需求信息
-  if (requirement) {
+  if (parsedRequirement) {
+    const parsed = parsedRequirement
     contextInfo += `
-## 需求内容
-${requirement.raw_content || '无'}
-`
-
-    if (requirement.parsed_content) {
-      const parsed = requirement.parsed_content
-      contextInfo += `
-## AI 分析结果
+## 已确认需求分析
 - **项目类型**：${parsed.projectType}
 - **业务目标**：${parsed.businessGoals.join('、') || '无'}
 - **核心功能**：${parsed.keyFeatures.join('、') || '无'}
 - **技术栈**：${parsed.techStack.join('、') || '无'}
 - **潜在风险**：${parsed.risks.join('、') || '无'}
 `
-    }
   }
 
   // 添加功能模块信息

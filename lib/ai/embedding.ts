@@ -36,9 +36,11 @@ export interface EmbeddingRequestOptions {
   timeoutMs?: number
   maxRetries?: number
   traceMetadata?: Record<string, string | number | boolean | string[]>
+  fetch?: typeof globalThis.fetch
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>
 }
 
-class EmbeddingApiError extends Error {
+export class EmbeddingApiError extends Error {
   constructor(
     message: string,
     readonly status: number
@@ -96,7 +98,8 @@ async function requestEmbeddings(
         throwIfAborted(signal)
 
         try {
-          const response = await fetch(DASHSCOPE_API_URL, {
+          const request = options.fetch ?? globalThis.fetch
+          const response = await request(DASHSCOPE_API_URL, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -124,7 +127,7 @@ async function requestEmbeddings(
             throw error
           }
 
-          await waitForRetry(retryDelay(attempt), signal)
+          await (options.sleep ?? waitForRetry)(retryDelay(attempt), signal)
         }
       }
     }

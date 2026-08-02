@@ -86,6 +86,8 @@ export function createTelemetryConfig(
 
   return {
     isEnabled: true,
+    recordInputs: false,
+    recordOutputs: false,
     functionId,
     metadata: {
       ...metadata,

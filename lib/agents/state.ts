@@ -159,19 +159,25 @@ export const PresalesStateAnnotation = Annotation.Root({
   }),
 
   /** 需求 ID */
-  requirementId: Annotation<string>({
+  requirementBaselineId: Annotation<string>({
     default: () => '',
     reducer: (_, next) => next,
   }),
 
   /** 原始需求文本 */
-  rawRequirement: Annotation<string>({
+  canonicalRequirement: Annotation<string>({
     default: () => '',
     reducer: (_, next) => next,
   }),
 
   /** 项目描述 */
   projectDescription: Annotation<string>({
+    default: () => '',
+    reducer: (_, next) => next,
+  }),
+
+  /** 本次执行固定的需求分析提示词 */
+  analysisPromptTemplate: Annotation<string>({
     default: () => '',
     reducer: (_, next) => next,
   }),
@@ -247,17 +253,19 @@ export type PresalesState = typeof PresalesStateAnnotation.State
  */
 export function createInitialState(
   projectId: string,
-  requirementId: string,
-  rawRequirement: string,
+  requirementBaselineId: string,
+  canonicalRequirement: string,
   projectDescription: string = '',
-  systemConfig: WorkflowSystemConfig | null = null
+  systemConfig: WorkflowSystemConfig | null = null,
+  analysisPromptTemplate: string = ''
 ): Partial<PresalesState> {
   return {
     projectId,
-    requirementId,
-    rawRequirement,
+    requirementBaselineId,
+    canonicalRequirement,
     projectDescription,
     systemConfig,
+    analysisPromptTemplate,
     analysis: null,
     functions: [],
     identifiedRoles: [],

@@ -73,11 +73,15 @@ export async function getReferencesForBreakdown(
       signal: options.signal,
     })
 
-    const { data, error } = await supabase.rpc('match_estimate_references', {
+    let vectorQuery = supabase.rpc('match_estimate_references', {
       query_embedding: JSON.stringify(queryEmbedding),
       match_threshold: 0.3,
       match_count: limit,
     })
+    if (options.signal) {
+      vectorQuery = vectorQuery.abortSignal(options.signal)
+    }
+    const { data, error } = await vectorQuery
 
     if (!error && data && data.length > 0) {
       console.log('[RAG] 向量检索命中:', {
@@ -98,11 +102,15 @@ export async function getReferencesForBreakdown(
   }
 
   // Fallback: 全局高频参考
-  const { data: fallbackData } = await supabase
+  let fallbackQuery = supabase
     .from('estimate_references')
     .select('*')
     .order('usage_count', { ascending: false })
     .limit(limit)
+  if (options.signal) {
+    fallbackQuery = fallbackQuery.abortSignal(options.signal)
+  }
+  const { data: fallbackData } = await fallbackQuery
 
   return fallbackData || []
 }

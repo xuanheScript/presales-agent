@@ -104,14 +104,12 @@ port = 54324
 [storage]
 enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
-file_size_limit = "50MiB"
+file_size_limit = "500MB"
 
-# Uncomment to configure local storage buckets
-# [storage.buckets.images]
-# public = false
-# file_size_limit = "50MiB"
-# allowed_mime_types = ["image/png", "image/jpeg"]
-# objects_path = "./images"
+[storage.buckets.meeting-audio]
+public = false
+file_size_limit = "500MB"
+allowed_mime_types = ["audio/wav", "audio/x-wav", "audio/wave", "audio/flac", "audio/x-flac", "audio/mpeg", "audio/mp4", "audio/ogg", "audio/webm", "video/mp4"]
 
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]

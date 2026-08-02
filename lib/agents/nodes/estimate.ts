@@ -1,7 +1,7 @@
 import { generateText, Output } from 'ai'
 import { z } from 'zod'
 import type { RunnableConfig } from '@langchain/core/runnables'
-import { defaultModel } from '@/lib/ai/config'
+import { defaultModelGateway, type ModelGateway } from '@/lib/ai/model-gateway'
 import {
   EXECUTION_POLICY,
   getRunnableSignal,
@@ -80,7 +80,8 @@ const BUFFER_ESTIMATION_PROMPT = `你是一位经验丰富的项目经理，擅�
  */
 export async function estimateNode(
   state: PresalesState,
-  config?: RunnableConfig
+  config?: RunnableConfig,
+  modelGateway: ModelGateway = defaultModelGateway
 ): Promise<Partial<PresalesState>> {
   // 验证前置条件
   if (!state.functions || state.functions.length === 0) {
@@ -115,11 +116,21 @@ export async function estimateNode(
       }
     }
 
-    // 2. 加入额外工作项的工时（按角色分配）
+    // 2. 加入额外工作项的工时（按唯一角色平均分配）
     for (const work of state.additionalWork) {
-      // 额外工作项的工时平均分配给 assignedRoles
-      const daysPerRole = work.days / work.assignedRoles.length
-      for (const role of work.assignedRoles) {
+      const assignedRoles = Array.from(new Set(work.assignedRoles))
+      if (assignedRoles.length === 0) {
+        throw new Error(`${work.workItem}必须至少分配一个角色`)
+      }
+      if (!Number.isFinite(work.days) || work.days <= 0) {
+        throw new Error(`${work.workItem}的人天必须是有限的正数`)
+      }
+
+      const daysPerRole = work.days / assignedRoles.length
+      for (const role of assignedRoles) {
+        if (!state.identifiedRoles.some((item) => item.role === role)) {
+          throw new Error(`${work.workItem}引用了不存在的角色: ${role}`)
+        }
         const current = roleDaysMap.get(role) || 0
         roleDaysMap.set(role, current + daysPerRole)
       }
@@ -159,16 +170,16 @@ export async function estimateNode(
       [getRunnableSignal(config)],
       EXECUTION_POLICY.workflowNodeTimeoutMs,
       (signal) => generateText({
-        model: defaultModel,
+        model: modelGateway.model,
         output: Output.object({
           schema: bufferEstimationSchema,
         }),
         prompt,
         abortSignal: signal,
-        maxRetries: EXECUTION_POLICY.aiMaxRetries,
+        maxRetries: modelGateway.maxRetries,
         experimental_telemetry: createTelemetryConfig('workflow-estimate', {
           projectId: state.projectId,
-          requirementId: state.requirementId,
+          requirementBaselineId: state.requirementBaselineId,
           executionId: String(config?.configurable?.executionId || 'none'),
           modulesCount: state.functions.length,
           baseTotalDays,

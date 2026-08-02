@@ -2,20 +2,28 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import type { Project, Requirement, FunctionModule, CostEstimate } from '@/types'
-import { DEFAULT_CONFIG } from '@/constants'
 
 interface ExportData {
   project: Project
   requirement: Requirement | null
   functions: FunctionModule[]
   costEstimate: CostEstimate | null
+  estimateVersionId: string
+  estimateRevision: number
 }
 
 /**
  * 生成 PDF 报告
  */
 export function generatePDFReport(data: ExportData): void {
-  const { project, requirement, functions, costEstimate } = data
+  const {
+    project,
+    requirement,
+    functions,
+    costEstimate,
+    estimateVersionId,
+    estimateRevision,
+  } = data
 
   // 创建 PDF 文档
   const doc = new jsPDF({
@@ -45,6 +53,8 @@ export function generatePDFReport(data: ExportData): void {
   doc.text(`Industry: ${project.industry || 'Not Specified'}`, 20, yPos)
   yPos += 6
   doc.text(`Status: ${project.status}`, 20, yPos)
+  yPos += 6
+  doc.text(`Published Estimate: v${estimateRevision} (${estimateVersionId})`, 20, yPos)
   yPos += 6
   doc.text(`Created: ${new Date(project.created_at).toLocaleDateString()}`, 20, yPos)
   yPos += 10
@@ -203,7 +213,14 @@ export function generatePDFReport(data: ExportData): void {
  * 生成 Excel 报告
  */
 export function generateExcelReport(data: ExportData): void {
-  const { project, requirement, functions, costEstimate } = data
+  const {
+    project,
+    requirement,
+    functions,
+    costEstimate,
+    estimateVersionId,
+    estimateRevision,
+  } = data
 
   // 创建工作簿
   const wb = XLSX.utils.book_new()
@@ -216,6 +233,8 @@ export function generateExcelReport(data: ExportData): void {
     ['Project Name', project.name],
     ['Industry', project.industry || 'Not Specified'],
     ['Status', project.status],
+    ['Published Estimate Version', `v${estimateRevision}`],
+    ['Estimate Version ID', estimateVersionId],
     ['Created Date', new Date(project.created_at).toLocaleDateString()],
     ['Description', project.description || ''],
     [],

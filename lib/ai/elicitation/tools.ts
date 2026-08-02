@@ -120,6 +120,7 @@ export function createElicitationTools(context: ElicitationToolsContext) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', elicitationSessionId)
+        .eq('status', 'active')
 
       return {
         success: true,

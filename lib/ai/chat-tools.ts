@@ -12,8 +12,10 @@ import type { ParsedRequirement } from '@/types'
 
 interface ChatToolsContext {
   projectId: string
-  requirementId: string
+  requirementId: string | null
 }
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
 
 /**
  * 创建带有上下文的聊天工具集
@@ -21,27 +23,79 @@ interface ChatToolsContext {
 export function createChatTools(context: ChatToolsContext) {
   const { projectId, requirementId } = context
 
-  const rejectFormalFunctionWrite = async (
-    supabase: Awaited<ReturnType<typeof createClient>>
-  ) => {
+  const rejectImmutableEstimateWrite = async (supabase: SupabaseServerClient) => {
     const { data, error } = await supabase
-      .from('cost_estimates')
-      .select('rule_version')
-      .eq('project_id', projectId)
-      .order('created_at', { ascending: false })
-      .limit(1)
+      .from('projects')
+      .select('current_requirement_baseline_id, latest_estimate_version_id, published_estimate_version_id')
+      .eq('id', projectId)
       .maybeSingle()
 
     if (error) {
-      return { success: false as const, error: `检查正式成本版本失败: ${error.message}` }
+      return { success: false as const, error: `检查项目版本状态失败: ${error.message}` }
     }
-    if (data?.rule_version === 'formal-workflow-v1') {
+    if (!data) {
+      return { success: false as const, error: '项目不存在或无权限' }
+    }
+    if (
+      data.current_requirement_baseline_id
+      || data.latest_estimate_version_id
+      || data.published_estimate_version_id
+    ) {
       return {
         success: false as const,
-        error: '该项目使用正式成本规则，请在功能明细页面完成角色人天分配并触发自动重算',
+        error: '项目已进入不可变需求与估算版本流程。请通过需求变更审核或估算明细人工修订创建新版本，聊天工具不能覆盖历史数据。',
       }
     }
     return null
+  }
+
+  const loadLatestEstimateSnapshot = async (supabase: SupabaseServerClient) => {
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('name, description, industry, status, latest_estimate_version_id')
+      .eq('id', projectId)
+      .maybeSingle()
+
+    if (projectError) {
+      return { error: projectError.message, project: null, version: null, functions: [], cost: null }
+    }
+    if (!project) {
+      return { error: '项目不存在或无权限', project: null, version: null, functions: [], cost: null }
+    }
+    if (!project.latest_estimate_version_id) {
+      return { error: null, project, version: null, functions: [], cost: null }
+    }
+
+    const versionId = project.latest_estimate_version_id
+    const [versionResult, functionsResult, costResult] = await Promise.all([
+      supabase
+        .from('estimate_versions')
+        .select('id, revision_no, requirement_baseline_id')
+        .eq('id', versionId)
+        .eq('project_id', projectId)
+        .maybeSingle(),
+      supabase
+        .from('estimate_version_functions')
+        .select('*')
+        .eq('estimate_version_id', versionId)
+        .eq('project_id', projectId)
+        .order('sequence_no', { ascending: true }),
+      supabase
+        .from('estimate_version_costs')
+        .select('*')
+        .eq('estimate_version_id', versionId)
+        .eq('project_id', projectId)
+        .maybeSingle(),
+    ])
+
+    const error = versionResult.error || functionsResult.error || costResult.error
+    return {
+      error: error?.message || null,
+      project,
+      version: versionResult.data,
+      functions: functionsResult.data || [],
+      cost: costResult.data,
+    }
   }
 
   // ==================== 需求管理工具 ====================
@@ -53,14 +107,25 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async ({ content }) => {
       const supabase = await createClient()
+      const writeRejection = await rejectImmutableEstimateWrite(supabase)
+      if (writeRejection) return writeRejection
+      if (!requirementId) {
+        return { success: false, error: '尚未创建可编辑需求草稿' }
+      }
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('requirements')
         .update({ raw_content: content.trim() })
         .eq('id', requirementId)
+        .eq('project_id', projectId)
+        .select('id')
+        .maybeSingle()
 
       if (error) {
         return { success: false, error: error.message }
+      }
+      if (!data) {
+        return { success: false, error: '需求草稿不存在或无权限' }
       }
 
       return { success: true, message: '需求内容已更新' }
@@ -74,24 +139,42 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async ({ content }) => {
       const supabase = await createClient()
+      const writeRejection = await rejectImmutableEstimateWrite(supabase)
+      if (writeRejection) return writeRejection
+      if (!requirementId) {
+        return { success: false, error: '尚未创建可编辑需求草稿' }
+      }
 
-      // 先获取现有内容
-      const { data: requirement } = await supabase
+      const { data: requirement, error: readError } = await supabase
         .from('requirements')
         .select('raw_content')
         .eq('id', requirementId)
-        .single()
+        .eq('project_id', projectId)
+        .maybeSingle()
 
-      const existingContent = requirement?.raw_content || ''
+      if (readError) {
+        return { success: false, error: readError.message }
+      }
+      if (!requirement) {
+        return { success: false, error: '需求草稿不存在或无权限' }
+      }
+
+      const existingContent = requirement.raw_content || ''
       const newContent = existingContent + '\n\n---\n\n' + content.trim()
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('requirements')
         .update({ raw_content: newContent })
         .eq('id', requirementId)
+        .eq('project_id', projectId)
+        .select('id')
+        .maybeSingle()
 
       if (error) {
         return { success: false, error: error.message }
+      }
+      if (!data) {
+        return { success: false, error: '需求草稿已被删除或无权限' }
       }
 
       return { success: true, message: '需求内容已追加' }
@@ -114,17 +197,28 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async (params) => {
       const supabase = await createClient()
+      const writeRejection = await rejectImmutableEstimateWrite(supabase)
+      if (writeRejection) return writeRejection
+      if (!requirementId) {
+        return { success: false, error: '尚未创建可编辑需求草稿' }
+      }
 
-      // 获取现有的解析内容
-      const { data: requirement } = await supabase
+      const { data: requirement, error: readError } = await supabase
         .from('requirements')
         .select('parsed_content')
         .eq('id', requirementId)
-        .single()
+        .eq('project_id', projectId)
+        .maybeSingle()
 
-      const existingParsed = (requirement?.parsed_content || {}) as ParsedRequirement
+      if (readError) {
+        return { success: false, error: readError.message }
+      }
+      if (!requirement) {
+        return { success: false, error: '需求草稿不存在或无权限' }
+      }
 
-      // 合并更新
+      const existingParsed = (requirement.parsed_content || {}) as ParsedRequirement
+
       const updatedParsed: ParsedRequirement = {
         projectType: params.projectType ?? existingParsed.projectType ?? '',
         businessGoals: params.businessGoals ?? existingParsed.businessGoals ?? [],
@@ -137,13 +231,19 @@ export function createChatTools(context: ChatToolsContext) {
         risks: params.risks ?? existingParsed.risks ?? [],
       }
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('requirements')
         .update({ parsed_content: updatedParsed })
         .eq('id', requirementId)
+        .eq('project_id', projectId)
+        .select('id')
+        .maybeSingle()
 
       if (error) {
         return { success: false, error: error.message }
+      }
+      if (!data) {
+        return { success: false, error: '需求草稿已被删除或无权限' }
       }
 
       return { success: true, message: '需求分析结果已更新', data: updatedParsed }
@@ -163,7 +263,7 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async ({ moduleName, functionName, description, difficultyLevel, estimatedHours }) => {
       const supabase = await createClient()
-      const formalWriteRejection = await rejectFormalFunctionWrite(supabase)
+      const formalWriteRejection = await rejectImmutableEstimateWrite(supabase)
       if (formalWriteRejection) return formalWriteRejection
 
       const { data, error } = await supabase
@@ -200,7 +300,7 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async ({ modules }) => {
       const supabase = await createClient()
-      const formalWriteRejection = await rejectFormalFunctionWrite(supabase)
+      const formalWriteRejection = await rejectImmutableEstimateWrite(supabase)
       if (formalWriteRejection) return formalWriteRejection
 
       const insertData = modules.map(m => ({
@@ -233,7 +333,7 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async ({ functionId, hours }) => {
       const supabase = await createClient()
-      const formalWriteRejection = await rejectFormalFunctionWrite(supabase)
+      const formalWriteRejection = await rejectImmutableEstimateWrite(supabase)
       if (formalWriteRejection) return formalWriteRejection
 
       const { data, error } = await supabase
@@ -260,6 +360,8 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async ({ functionId, difficultyLevel }) => {
       const supabase = await createClient()
+      const writeRejection = await rejectImmutableEstimateWrite(supabase)
+      if (writeRejection) return writeRejection
 
       const { data, error } = await supabase
         .from('function_modules')
@@ -291,7 +393,7 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async ({ functionId }) => {
       const supabase = await createClient()
-      const formalWriteRejection = await rejectFormalFunctionWrite(supabase)
+      const formalWriteRejection = await rejectImmutableEstimateWrite(supabase)
       if (formalWriteRejection) return formalWriteRejection
 
       // 先获取功能名称用于返回消息
@@ -325,7 +427,7 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async ({ libraryItemId, customHours, customDifficulty }) => {
       const supabase = await createClient()
-      const formalWriteRejection = await rejectFormalFunctionWrite(supabase)
+      const formalWriteRejection = await rejectImmutableEstimateWrite(supabase)
       if (formalWriteRejection) return formalWriteRejection
 
       // 获取功能库项目
@@ -372,6 +474,8 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async (params) => {
       const supabase = await createClient()
+      const writeRejection = await rejectImmutableEstimateWrite(supabase)
+      if (writeRejection) return writeRejection
 
       // 获取现有成本估算
       const { data: existingCost } = await supabase
@@ -444,6 +548,8 @@ export function createChatTools(context: ChatToolsContext) {
     }),
     execute: async (params) => {
       const supabase = await createClient()
+      const writeRejection = await rejectImmutableEstimateWrite(supabase)
+      if (writeRejection) return writeRejection
 
       // 获取所有功能模块
       const { data: functions } = await supabase
@@ -614,27 +720,27 @@ export function createChatTools(context: ChatToolsContext) {
     inputSchema: z.object({}),
     execute: async () => {
       const supabase = await createClient()
+      const snapshot = await loadLatestEstimateSnapshot(supabase)
 
-      const { data, error } = await supabase
-        .from('function_modules')
-        .select('*')
-        .eq('project_id', projectId)
-        .order('module_name', { ascending: true })
-        .order('function_name', { ascending: true })
-
-      if (error) {
-        return { success: false, error: error.message }
+      if (snapshot.error) {
+        return { success: false, error: snapshot.error }
       }
 
-      const totalHours = data?.reduce((sum, f) => sum + Number(f.estimated_hours), 0) || 0
+      const totalHours = snapshot.functions.reduce(
+        (sum, fn) => sum + Number(fn.estimated_hours),
+        0
+      )
 
       return {
         success: true,
         data: {
-          modules: data || [],
-          count: data?.length || 0,
+          estimateVersionId: snapshot.version?.id || null,
+          revision: snapshot.version?.revision_no || null,
+          modules: snapshot.functions,
+          count: snapshot.functions.length,
           totalHours,
         },
+        message: snapshot.version ? undefined : '尚未生成不可变估算版本',
       }
     },
   })
@@ -644,28 +750,26 @@ export function createChatTools(context: ChatToolsContext) {
     inputSchema: z.object({}),
     execute: async () => {
       const supabase = await createClient()
+      const snapshot = await loadLatestEstimateSnapshot(supabase)
 
-      const { data: cost } = await supabase
-        .from('cost_estimates')
-        .select('*')
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
-
-      if (!cost) {
-        return { success: true, data: null, message: '暂无成本估算数据' }
+      if (snapshot.error) {
+        return { success: false, error: snapshot.error }
+      }
+      if (!snapshot.cost) {
+        return { success: true, data: null, message: '尚未生成不可变成本估算版本' }
       }
 
       return {
         success: true,
         data: {
-          laborCost: cost.labor_cost,
-          serviceCost: cost.service_cost,
-          infrastructureCost: cost.infrastructure_cost,
-          bufferPercentage: cost.buffer_percentage,
-          totalCost: cost.total_cost,
-          breakdown: cost.breakdown,
+          estimateVersionId: snapshot.version?.id || null,
+          revision: snapshot.version?.revision_no || null,
+          laborCost: snapshot.cost.labor_cost,
+          serviceCost: snapshot.cost.service_cost,
+          infrastructureCost: snapshot.cost.infrastructure_cost,
+          bufferPercentage: snapshot.cost.buffer_percentage,
+          totalCost: snapshot.cost.total_cost,
+          breakdown: snapshot.cost.breakdown,
         },
       }
     },
@@ -710,44 +814,30 @@ export function createChatTools(context: ChatToolsContext) {
     inputSchema: z.object({}),
     execute: async () => {
       const supabase = await createClient()
+      const snapshot = await loadLatestEstimateSnapshot(supabase)
 
-      // 获取项目基本信息
-      const { data: project } = await supabase
-        .from('projects')
-        .select('name, description, industry, status')
-        .eq('id', projectId)
-        .single()
+      if (snapshot.error) {
+        return { success: false, error: snapshot.error }
+      }
 
-      // 获取功能模块统计
-      const { data: functions } = await supabase
-        .from('function_modules')
-        .select('estimated_hours, difficulty_level')
-        .eq('project_id', projectId)
-
-      // 获取成本估算
-      const { data: cost } = await supabase
-        .from('cost_estimates')
-        .select('total_cost, labor_cost, buffer_percentage')
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
-
-      let totalHours = 0
-      functions?.forEach(f => {
-        totalHours += Number(f.estimated_hours)
-      })
+      const totalHours = snapshot.functions.reduce(
+        (sum, fn) => sum + Number(fn.estimated_hours),
+        0
+      )
 
       return {
         success: true,
         data: {
-          project: project || null,
-          totalModules: functions?.length || 0,
+          project: snapshot.project,
+          estimateVersionId: snapshot.version?.id || null,
+          revision: snapshot.version?.revision_no || null,
+          requirementBaselineId: snapshot.version?.requirement_baseline_id || null,
+          totalModules: snapshot.functions.length,
           totalHours,
           totalDays: Math.round((totalHours / 8) * 10) / 10,
-          totalCost: cost?.total_cost || 0,
-          laborCost: cost?.labor_cost || 0,
-          bufferPercentage: cost?.buffer_percentage || 15,
+          totalCost: snapshot.cost?.total_cost || 0,
+          laborCost: snapshot.cost?.labor_cost || 0,
+          bufferPercentage: snapshot.cost?.buffer_percentage || 0,
         },
       }
     },

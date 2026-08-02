@@ -12,11 +12,11 @@ import {
 } from 'lucide-react'
 
 const tabs = [
-  { segment: null, label: '需求输入', icon: FileText },         // /projects/[id]
-  { segment: 'analysis', label: 'AI 分析', icon: Sparkles },    // /projects/[id]/analysis
-  { segment: 'functions', label: '功能明细', icon: Layers },    // /projects/[id]/functions
-  { segment: 'estimation', label: '成本估算', icon: Calculator }, // /projects/[id]/estimation
-  { segment: 'report', label: '报告预览', icon: FileOutput },   // /projects/[id]/report
+  { segment: null, label: '需求工作台', icon: FileText },
+  { segment: 'analysis', label: '方案与成本分析', icon: Sparkles },
+  { segment: 'functions', label: '功能明细', icon: Layers },
+  { segment: 'estimation', label: '成本估算', icon: Calculator },
+  { segment: 'report', label: '报告预览', icon: FileOutput },
 ]
 
 interface ProjectTabsProps {
@@ -27,8 +27,10 @@ export function ProjectTabs({ projectId }: ProjectTabsProps) {
   // 获取当前活动的子路由段，比 usePathname 更简洁
   const segment = useSelectedLayoutSegment()
 
+  const selectedValue = segment === 'meetings' ? '__root__' : segment ?? '__root__'
+
   return (
-    <Tabs value={segment ?? '__root__'} className="w-full">
+    <Tabs value={selectedValue} className="w-full">
       <TabsList className="grid w-full grid-cols-5">
         {tabs.map((tab) => (
           <TabsTrigger

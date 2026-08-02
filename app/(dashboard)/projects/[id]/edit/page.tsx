@@ -30,7 +30,7 @@ export default async function EditProjectPage({ params }: EditProjectPageProps) 
         <div>
           <h1 className="text-2xl font-bold tracking-tight">编辑项目</h1>
           <p className="text-muted-foreground">
-            修改项目 "{project.name}" 的基本信息
+            修改项目 &quot;{project.name}&quot; 的基本信息
           </p>
         </div>
       </div>

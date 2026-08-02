@@ -1,14 +1,21 @@
 import { DEFAULT_CONFIG } from '@/constants'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { withLangfuseTrace } from '@/lib/observability/langfuse'
 import {
   EXECUTION_POLICY,
   getErrorMessage,
   isAbortError,
-  isTimeoutError,
   type WorkflowRunOptions,
 } from './execution-policy'
+import {
+  PresalesExecutionError,
+  classifyExecutionError,
+  type PresalesExecutionTerminalStatus,
+} from './execution-errors'
+import { buildPresalesPersistenceSnapshot } from './persistence-snapshot'
 import { runPresalesWorkflow, streamPresalesWorkflow } from './graph'
+import { getAnalysisPromptSnapshot } from './nodes/analyze'
 import type {
   WorkflowResult,
   WorkflowSystemConfig,
@@ -17,30 +24,37 @@ import type {
 import type { ProjectStatus } from '@/types'
 
 export type PresalesTransport = 'run' | 'stream'
-export type PresalesExecutionTerminalStatus = 'failed' | 'cancelled' | 'timed_out'
 
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
-
-export class PresalesExecutionError extends Error {
-  constructor(
-    message: string,
-    readonly status: number = 500,
-    readonly code = 'PRESALES_EXECUTION_ERROR'
-  ) {
-    super(message)
-    this.name = 'PresalesExecutionError'
-  }
+export {
+  PresalesExecutionError,
+  buildPresalesPersistenceSnapshot,
+  classifyExecutionError,
 }
 
 export interface PreparedPresalesExecution {
-  supabase: SupabaseServerClient
   userId: string
   projectId: string
-  requirementId: string
-  rawRequirement: string
+  requirementBaselineId: string
+  requirementBaselineRevision: number
+  requirementBaselineContentHash: string
+  canonicalRequirement: string
   projectDescription: string
+  analysisPromptTemplate: string
   previousProjectStatus: ProjectStatus
   systemConfig: WorkflowSystemConfig
+  provenance: PresalesExecutionProvenance
+}
+
+export interface PresalesExecutionProvenance {
+  modelId: string
+  workflowVersion: 'presales-workflow-v1'
+  promptVersions: {
+    analysis: string
+    breakdown: 'batched_structured_v2'
+    estimate: 'buffer-estimation-v1'
+    calculate: 'formal-workflow-v1'
+  }
+  outputSchemaVersion: 'presales-estimate-v1'
 }
 
 export interface PresalesPersistenceSnapshot {
@@ -98,6 +112,7 @@ export interface PresalesPersistenceSnapshot {
 
 export interface PresalesExecutionHandle {
   executionId: string
+  existingEstimateVersionId: string | null
   prepared: PreparedPresalesExecution
   startedAt: number
   transport: PresalesTransport
@@ -130,14 +145,14 @@ function numericConfigValue(value: unknown, fallback: number): number {
 
 export async function preparePresalesExecution(
   projectId: string,
-  requirementId: string
+  requirementBaselineId: string
 ): Promise<PreparedPresalesExecution> {
-  if (!projectId || !requirementId) {
+  if (!projectId || !requirementBaselineId) {
     throw new PresalesExecutionError('缺少必要参数', 400, 'MISSING_ARGUMENT')
   }
 
   assertUuidLike(projectId, 'projectId')
-  assertUuidLike(requirementId, 'requirementId')
+  assertUuidLike(requirementBaselineId, 'requirementBaselineId')
 
   const supabase = await createClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -146,17 +161,17 @@ export async function preparePresalesExecution(
     throw new PresalesExecutionError('请先登录', 401, 'UNAUTHORIZED')
   }
 
-  const [projectResult, requirementResult, configResult] = await Promise.all([
+  const [projectResult, baselineResult, configResult] = await Promise.all([
     supabase
       .from('projects')
-      .select('id, description, status')
+      .select('id, status, current_requirement_baseline_id')
       .eq('id', projectId)
       .eq('created_by', user.id)
       .maybeSingle(),
     supabase
-      .from('requirements')
-      .select('id, project_id, raw_content')
-      .eq('id', requirementId)
+      .from('requirement_baselines')
+      .select('id, project_id, revision_no, canonical_content, content_hash, project_description_snapshot')
+      .eq('id', requirementBaselineId)
       .eq('project_id', projectId)
       .maybeSingle(),
     supabase
@@ -175,14 +190,17 @@ export async function preparePresalesExecution(
   if (projectResult.data.status === 'archived') {
     throw new PresalesExecutionError('归档项目不能执行分析', 400, 'PROJECT_ARCHIVED')
   }
-  if (requirementResult.error) {
-    throw new PresalesExecutionError(`查询需求失败: ${requirementResult.error.message}`, 500)
+  if (projectResult.data.current_requirement_baseline_id !== requirementBaselineId) {
+    throw new PresalesExecutionError('请求的需求基线不是项目当前已确认基线', 409, 'BASELINE_CONFLICT')
   }
-  if (!requirementResult.data) {
-    throw new PresalesExecutionError('需求不存在、无权限或不属于该项目', 404, 'REQUIREMENT_NOT_FOUND')
+  if (baselineResult.error) {
+    throw new PresalesExecutionError(`查询需求基线失败: ${baselineResult.error.message}`, 500)
   }
-  if (!requirementResult.data.raw_content?.trim()) {
-    throw new PresalesExecutionError('需求内容为空', 400, 'EMPTY_REQUIREMENT')
+  if (!baselineResult.data) {
+    throw new PresalesExecutionError('需求基线不存在、无权限或不属于该项目', 404, 'BASELINE_NOT_FOUND')
+  }
+  if (!baselineResult.data.canonical_content?.trim()) {
+    throw new PresalesExecutionError('需求基线内容为空', 400, 'EMPTY_BASELINE')
   }
 
   if (configResult.error) {
@@ -190,13 +208,111 @@ export async function preparePresalesExecution(
   }
 
   const dbConfig = configResult.data
+  const analysisPrompt = await getAnalysisPromptSnapshot()
+  const systemConfig = {
+    laborCostPerDay: numericConfigValue(
+      dbConfig?.default_labor_cost_per_day,
+      DEFAULT_CONFIG.LABOR_COST_PER_DAY
+    ),
+    riskBufferPercentage: numericConfigValue(
+      dbConfig?.default_risk_buffer_percentage,
+      DEFAULT_CONFIG.RISK_BUFFER_PERCENTAGE
+    ),
+    workingHoursPerDay: DEFAULT_CONFIG.WORKING_HOURS_PER_DAY,
+    currency: dbConfig?.currency || DEFAULT_CONFIG.CURRENCY,
+  }
+
   return {
-    supabase,
     userId: user.id,
     projectId,
-    requirementId,
-    rawRequirement: requirementResult.data.raw_content,
-    projectDescription: projectResult.data.description || '',
+    requirementBaselineId,
+    requirementBaselineRevision: baselineResult.data.revision_no,
+    requirementBaselineContentHash: baselineResult.data.content_hash,
+    canonicalRequirement: baselineResult.data.canonical_content,
+    projectDescription: baselineResult.data.project_description_snapshot || '',
+    analysisPromptTemplate: analysisPrompt.content,
+    previousProjectStatus: projectResult.data.status as ProjectStatus,
+    systemConfig,
+    provenance: {
+      modelId: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+      workflowVersion: 'presales-workflow-v1',
+      promptVersions: {
+        analysis: analysisPrompt.version,
+        breakdown: 'batched_structured_v2',
+        estimate: 'buffer-estimation-v1',
+        calculate: 'formal-workflow-v1',
+      },
+      outputSchemaVersion: 'presales-estimate-v1',
+    },
+  }
+}
+
+export async function preparePresalesExecutionForWorker(
+  actorUserId: string,
+  projectId: string,
+  requirementBaselineId: string
+): Promise<PreparedPresalesExecution> {
+  assertUuidLike(actorUserId, 'actorUserId')
+  assertUuidLike(projectId, 'projectId')
+  assertUuidLike(requirementBaselineId, 'requirementBaselineId')
+
+  const supabase = createAdminClient()
+  const [projectResult, baselineResult, configResult] = await Promise.all([
+    supabase
+      .from('projects')
+      .select('id, status, created_by, current_requirement_baseline_id')
+      .eq('id', projectId)
+      .eq('created_by', actorUserId)
+      .maybeSingle(),
+    supabase
+      .from('requirement_baselines')
+      .select('id, project_id, revision_no, canonical_content, content_hash, project_description_snapshot')
+      .eq('id', requirementBaselineId)
+      .eq('project_id', projectId)
+      .maybeSingle(),
+    supabase
+      .from('system_config')
+      .select('default_labor_cost_per_day, default_risk_buffer_percentage, currency')
+      .limit(1)
+      .maybeSingle(),
+  ])
+
+  if (projectResult.error) {
+    throw new PresalesExecutionError(`查询项目失败: ${projectResult.error.message}`, 500)
+  }
+  if (!projectResult.data) {
+    throw new PresalesExecutionError('项目不存在或执行发起用户无权访问', 404, 'PROJECT_NOT_FOUND')
+  }
+  if (projectResult.data.status === 'archived') {
+    throw new PresalesExecutionError('归档项目不能执行分析', 400, 'PROJECT_ARCHIVED')
+  }
+  if (projectResult.data.current_requirement_baseline_id !== requirementBaselineId) {
+    throw new PresalesExecutionError('请求的需求基线不是项目当前已确认基线', 409, 'BASELINE_CONFLICT')
+  }
+  if (baselineResult.error) {
+    throw new PresalesExecutionError(`查询需求基线失败: ${baselineResult.error.message}`, 500)
+  }
+  if (!baselineResult.data) {
+    throw new PresalesExecutionError('需求基线不存在或与项目不匹配', 404, 'BASELINE_NOT_FOUND')
+  }
+  if (!baselineResult.data.canonical_content?.trim()) {
+    throw new PresalesExecutionError('需求基线内容为空', 400, 'EMPTY_BASELINE')
+  }
+  if (configResult.error) {
+    throw new PresalesExecutionError(`查询成本配置失败: ${configResult.error.message}`, 500)
+  }
+
+  const analysisPrompt = await getAnalysisPromptSnapshot()
+  const dbConfig = configResult.data
+  return {
+    userId: actorUserId,
+    projectId,
+    requirementBaselineId,
+    requirementBaselineRevision: baselineResult.data.revision_no,
+    requirementBaselineContentHash: baselineResult.data.content_hash,
+    canonicalRequirement: baselineResult.data.canonical_content,
+    projectDescription: baselineResult.data.project_description_snapshot || '',
+    analysisPromptTemplate: analysisPrompt.content,
     previousProjectStatus: projectResult.data.status as ProjectStatus,
     systemConfig: {
       laborCostPerDay: numericConfigValue(
@@ -210,25 +326,47 @@ export async function preparePresalesExecution(
       workingHoursPerDay: DEFAULT_CONFIG.WORKING_HOURS_PER_DAY,
       currency: dbConfig?.currency || DEFAULT_CONFIG.CURRENCY,
     },
+    provenance: {
+      modelId: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+      workflowVersion: 'presales-workflow-v1',
+      promptVersions: {
+        analysis: analysisPrompt.version,
+        breakdown: 'batched_structured_v2',
+        estimate: 'buffer-estimation-v1',
+        calculate: 'formal-workflow-v1',
+      },
+      outputSchemaVersion: 'presales-estimate-v1',
+    },
   }
 }
 
 export async function beginPresalesExecution(
   prepared: PreparedPresalesExecution,
-  transport: PresalesTransport
+  transport: PresalesTransport,
+  orchestrationRunId?: string
 ): Promise<PresalesExecutionHandle> {
-  const { data, error } = await prepared.supabase.rpc('begin_presales_execution', {
+  const adminSupabase = createAdminClient()
+  const { data, error } = await adminSupabase.rpc('begin_presales_execution', {
+    p_actor_user_id: prepared.userId,
     p_project_id: prepared.projectId,
-    p_requirement_id: prepared.requirementId,
+    p_requirement_baseline_id: prepared.requirementBaselineId,
     p_agent_type: 'presales_estimation',
     p_input_data: {
       projectId: prepared.projectId,
-      requirementId: prepared.requirementId,
+      requirementBaselineId: prepared.requirementBaselineId,
+      requirementBaselineRevision: prepared.requirementBaselineRevision,
+      requirementBaselineContentHash: prepared.requirementBaselineContentHash,
       transport,
-      requirementLength: prepared.rawRequirement.length,
+      orchestrationRunId: orchestrationRunId || null,
+      previousProjectStatus: prepared.previousProjectStatus,
+      requirementLength: prepared.canonicalRequirement.length,
       projectDescriptionLength: prepared.projectDescription.length,
-      systemConfig: prepared.systemConfig,
     },
+    p_system_config: prepared.systemConfig,
+    p_model_id: prepared.provenance.modelId,
+    p_workflow_version: prepared.provenance.workflowVersion,
+    p_prompt_versions: prepared.provenance.promptVersions,
+    p_output_schema_version: prepared.provenance.outputSchemaVersion,
   })
 
   throwRpcError(error, '创建执行记录失败')
@@ -236,95 +374,55 @@ export async function beginPresalesExecution(
     throw new PresalesExecutionError('创建执行记录失败', 500)
   }
 
+  const executionId = data as string
+  let existingEstimateVersionId: string | null = null
+  if (orchestrationRunId) {
+    const { data: existing, error: existingError } = await adminSupabase
+      .from('agent_executions')
+      .select('status, estimate_version_id, requested_by, requirement_baseline_id')
+      .eq('id', executionId)
+      .maybeSingle()
+    if (existingError) {
+      throw new PresalesExecutionError(`读取执行状态失败: ${existingError.message}`, 500)
+    }
+    if (
+      existing?.requested_by !== prepared.userId
+      || existing?.requirement_baseline_id !== prepared.requirementBaselineId
+    ) {
+      throw new PresalesExecutionError('幂等执行记录与当前请求不匹配', 409, 'EXECUTION_CONFLICT')
+    }
+    if (existing.status === 'completed' && existing.estimate_version_id) {
+      existingEstimateVersionId = existing.estimate_version_id
+    }
+  }
+
   return {
-    executionId: data as string,
+    executionId,
+    existingEstimateVersionId,
     prepared,
     startedAt: Date.now(),
     transport,
   }
 }
 
-export function buildPresalesPersistenceSnapshot(
-  result: WorkflowResult,
-  prepared: PreparedPresalesExecution
-): PresalesPersistenceSnapshot {
-  if (!result.success || !result.analysis || !result.estimation || !result.cost) {
-    throw new PresalesExecutionError(result.error || '工作流结果不完整，不能保存', 500)
-  }
-
-  const staffingByRoleMap = new Map(
-    result.cost.staffingByRole.map((role) => [role.role, role.totalDays])
-  )
-
-  return {
-    parsedRequirement: result.analysis,
-    functionModules: result.functions.map((fn) => ({
-      module_name: fn.moduleName,
-      function_name: fn.functionName,
-      description: fn.description,
-      difficulty_level: fn.difficultyLevel,
-      estimated_hours: fn.roleEstimates.reduce(
-        (sum, role) => sum + role.days * prepared.systemConfig.workingHoursPerDay,
-        0
-      ),
-      dependencies: fn.dependencies || null,
-      role_estimates: fn.roleEstimates,
-    })),
-    projectRoles: result.identifiedRoles.map((role) => ({
-      role_name: role.role,
-      responsibility: role.responsibility,
-      headcount: role.headcount,
-      total_days: staffingByRoleMap.get(role.role) || 0,
-    })),
-    additionalWorkItems: result.additionalWork.map((work) => ({
-      work_item: work.workItem,
-      days: work.days,
-      assigned_roles: work.assignedRoles,
-    })),
-    costEstimate: {
-      labor_cost: result.cost.laborCost,
-      service_cost: result.cost.serviceCost,
-      infrastructure_cost: result.cost.infrastructureCost,
-      buffer_percentage: (result.cost.bufferCoefficient - 1) * 100,
-      total_cost: result.cost.totalCost,
-      base_days: result.cost.baseDays,
-      buffered_days: result.cost.bufferedDays,
-      buffer_coefficient: result.cost.bufferCoefficient,
-      rule_version: result.cost.ruleVersion,
-      service_policy_version: result.cost.servicePolicyVersion,
-      currency: result.cost.currency,
-      labor_cost_per_day: result.cost.laborCostPerDay,
-      working_hours_per_day: result.cost.workingHoursPerDay,
-      breakdown: {
-        roleBreakdown: result.cost.roleBreakdown,
-        additionalWorkBreakdown: result.cost.additionalWorkBreakdown,
-        thirdPartyServices: result.cost.thirdPartyServices,
-        ruleVersion: result.cost.ruleVersion,
-        servicePolicyVersion: result.cost.servicePolicyVersion,
-        currency: result.cost.currency,
-        laborCostPerDay: result.cost.laborCostPerDay,
-        workingHoursPerDay: result.cost.workingHoursPerDay,
-        bufferDays: result.cost.bufferDays,
-        estimatedDurationDays: result.cost.estimatedDurationDays,
-        reconciliation: result.cost.reconciliation,
-      },
-    },
-    outputData: result,
-  }
-}
-
 export async function completePresalesExecution(
   handle: PresalesExecutionHandle,
   result: WorkflowResult
-): Promise<void> {
+): Promise<string> {
   const snapshot = buildPresalesPersistenceSnapshot(result, handle.prepared)
-  const { error } = await handle.prepared.supabase.rpc('commit_presales_execution', {
+  const adminSupabase = createAdminClient()
+  const { data, error } = await adminSupabase.rpc('commit_presales_execution', {
+    p_actor_user_id: handle.prepared.userId,
     p_execution_id: handle.executionId,
     p_snapshot: snapshot,
     p_execution_time_ms: Date.now() - handle.startedAt,
   })
 
   throwRpcError(error, '保存分析结果失败')
+  if (typeof data !== 'string') {
+    throw new PresalesExecutionError('数据库未返回估算版本 ID', 500, 'INVALID_COMMIT_RESULT')
+  }
+  return data
 }
 
 export async function finishPresalesExecution(
@@ -332,25 +430,35 @@ export async function finishPresalesExecution(
   status: PresalesExecutionTerminalStatus,
   error: unknown
 ): Promise<void> {
-  const { error: rpcError } = await handle.prepared.supabase.rpc('finish_presales_execution', {
+  const params = {
+    p_actor_user_id: handle.prepared.userId,
     p_execution_id: handle.executionId,
     p_status: status,
     p_error_message: getErrorMessage(error, status === 'cancelled' ? '用户取消执行' : '执行失败'),
     p_execution_time_ms: Date.now() - handle.startedAt,
-  })
-
-  if (rpcError) {
-    console.error('[Execution] 更新执行终态失败:', rpcError)
   }
-}
+  const adminSupabase = createAdminClient()
+  let lastError: unknown
 
-export function classifyExecutionError(
-  error: unknown,
-  signal?: AbortSignal
-): PresalesExecutionTerminalStatus {
-  if (isTimeoutError(error, signal)) return 'timed_out'
-  if (isAbortError(error, signal)) return 'cancelled'
-  return 'failed'
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const { error: rpcError } = await adminSupabase.rpc(
+      'finish_presales_execution',
+      params
+    )
+    if (!rpcError) return
+
+    lastError = rpcError
+    if (attempt < 3) {
+      await new Promise((resolve) => setTimeout(resolve, attempt * 200))
+    }
+  }
+
+  console.error('[Execution] 更新执行终态失败，重试已耗尽:', lastError)
+  throw new PresalesExecutionError(
+    '分析已结束，但执行状态保存失败，请稍后重试',
+    503,
+    'EXECUTION_FINALIZATION_FAILED'
+  )
 }
 
 export async function executePreparedPresalesWorkflow(
@@ -364,8 +472,8 @@ export async function executePreparedPresalesWorkflow(
     {
       input: {
         projectId: prepared.projectId,
-        requirementId: prepared.requirementId,
-        requirementLength: prepared.rawRequirement.length,
+        requirementBaselineId: prepared.requirementBaselineId,
+        requirementLength: prepared.canonicalRequirement.length,
       },
       metadata: {
         executionId: handle.executionId,
@@ -377,15 +485,16 @@ export async function executePreparedPresalesWorkflow(
       try {
         const result = await runPresalesWorkflow(
           prepared.projectId,
-          prepared.requirementId,
-          prepared.rawRequirement,
+          prepared.requirementBaselineId,
+          prepared.canonicalRequirement,
           prepared.projectDescription,
           prepared.systemConfig,
           {
             ...options,
             executionId: handle.executionId,
             timeoutMs: options.timeoutMs ?? EXECUTION_POLICY.presalesRouteTimeoutMs,
-          }
+          },
+          prepared.analysisPromptTemplate
         )
 
         observation?.update({
@@ -413,14 +522,15 @@ export async function* streamPreparedPresalesWorkflow(
 
   yield* streamPresalesWorkflow(
     prepared.projectId,
-    prepared.requirementId,
-    prepared.rawRequirement,
+    prepared.requirementBaselineId,
+    prepared.canonicalRequirement,
     prepared.projectDescription,
     prepared.systemConfig,
     {
       ...options,
       executionId: handle.executionId,
       timeoutMs: options.timeoutMs ?? EXECUTION_POLICY.presalesRouteTimeoutMs,
-    }
+    },
+    prepared.analysisPromptTemplate
   )
 }

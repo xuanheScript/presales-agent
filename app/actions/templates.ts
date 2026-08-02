@@ -66,15 +66,16 @@ export async function getActiveTemplate(
   const { data, error } = await query
     .order('version', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
 
   if (error) {
-    // 如果找不到特定行业的模板，尝试获取通用模板
-    if (industry) {
-      return getActiveTemplate(templateType)
-    }
     console.error('获取活跃模板失败:', error)
     return null
+  }
+
+  // 如果找不到特定行业的模板，尝试获取通用模板
+  if (!data && industry) {
+    return getActiveTemplate(templateType)
   }
 
   return data

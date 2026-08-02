@@ -56,6 +56,7 @@ interface FunctionTableProps {
   roles: ProjectRole[]
   workingHoursPerDay: number
   projectMetadata?: ProjectMetadata
+  readOnly?: boolean
 }
 
 interface NewFunctionForm {
@@ -71,6 +72,7 @@ export function FunctionTable({
   roles,
   workingHoursPerDay,
   projectMetadata,
+  readOnly = false,
 }: FunctionTableProps) {
   const router = useRouter()
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -236,21 +238,23 @@ export function FunctionTable({
         <p className="text-sm text-muted-foreground">
           请先在需求页面进行 AI 分析，或手动添加功能
         </p>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="mt-4">
-              <Plus className="mr-2 h-4 w-4" />
-              添加功能
-            </Button>
-          </DialogTrigger>
-          <AddFunctionDialog
-            newFunction={newFunction}
-            setNewFunction={setNewFunction}
-            onSubmit={handleAddFunction}
-            roles={roles}
-            isPending={isPending}
-          />
-        </Dialog>
+        {!readOnly && (
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="mt-4">
+                <Plus className="mr-2 h-4 w-4" />
+                添加功能
+              </Button>
+            </DialogTrigger>
+            <AddFunctionDialog
+              newFunction={newFunction}
+              setNewFunction={setNewFunction}
+              onSubmit={handleAddFunction}
+              roles={roles}
+              isPending={isPending}
+            />
+          </Dialog>
+        )}
       </div>
     )
   }
@@ -263,7 +267,7 @@ export function FunctionTable({
           <span className="text-sm text-muted-foreground">
             共 {functions.length} 个功能，{Object.keys(groupedFunctions).length} 个模块
           </span>
-          {verifiedCount > 0 && (
+          {!readOnly && verifiedCount > 0 && (
             <Button
               size="sm"
               variant="outline"
@@ -275,21 +279,23 @@ export function FunctionTable({
             </Button>
           )}
         </div>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="mr-2 h-4 w-4" />
-              添加功能
-            </Button>
-          </DialogTrigger>
-          <AddFunctionDialog
-            newFunction={newFunction}
-            setNewFunction={setNewFunction}
-            onSubmit={handleAddFunction}
-            roles={roles}
-            isPending={isPending}
-          />
-        </Dialog>
+        {!readOnly && (
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Plus className="mr-2 h-4 w-4" />
+                添加功能
+              </Button>
+            </DialogTrigger>
+            <AddFunctionDialog
+              newFunction={newFunction}
+              setNewFunction={setNewFunction}
+              onSubmit={handleAddFunction}
+              roles={roles}
+              isPending={isPending}
+            />
+          </Dialog>
+        )}
       </div>
 
       {/* 功能表格 */}
@@ -301,8 +307,8 @@ export function FunctionTable({
               <TableHead>功能名称</TableHead>
               <TableHead className="min-w-[200px]">角色工时</TableHead>
               <TableHead className="w-[120px]">人天</TableHead>
-              <TableHead className="w-[80px]">验证</TableHead>
-              <TableHead className="w-[60px]">操作</TableHead>
+              {!readOnly && <TableHead className="w-[80px]">验证</TableHead>}
+              {!readOnly && <TableHead className="w-[60px]">操作</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -332,7 +338,7 @@ export function FunctionTable({
                       <div className="flex flex-wrap gap-1">
                         {fn.role_estimates.map((re, idx) => {
                           const roleKey = `${fn.id}-${idx}`
-                          if (editingRoleKey === roleKey) {
+                          if (!readOnly && editingRoleKey === roleKey) {
                             return (
                               <div key={idx} className="flex items-center gap-1">
                                 <span className="text-xs text-muted-foreground">{re.role}:</span>
@@ -377,8 +383,8 @@ export function FunctionTable({
                             <Badge
                               key={idx}
                               variant="outline"
-                              className="text-xs cursor-pointer hover:bg-accent"
-                              onClick={() => startEditingRole(fn.id, idx, re.days)}
+                              className={`text-xs ${readOnly ? '' : 'cursor-pointer hover:bg-accent'}`}
+                              onClick={readOnly ? undefined : () => startEditingRole(fn.id, idx, re.days)}
                             >
                               {re.role}: {re.days}人天
                               <Pencil className="ml-1 h-2.5 w-2.5 opacity-40" />
@@ -391,7 +397,7 @@ export function FunctionTable({
                     )}
                   </TableCell>
                   <TableCell>
-                    {editingId === fn.id ? (
+                    {!readOnly && editingId === fn.id ? (
                       <div className="flex items-center gap-1">
                         <Input
                           type="number"
@@ -424,41 +430,45 @@ export function FunctionTable({
                       </div>
                     ) : (
                       <div
-                        className="flex items-center gap-1 cursor-pointer hover:text-primary"
-                        onClick={() => startEditing(fn)}
+                        className={`flex items-center gap-1 ${readOnly ? '' : 'cursor-pointer hover:text-primary'}`}
+                        onClick={readOnly ? undefined : () => startEditing(fn)}
                       >
                         <span>{hoursToWorkDays(fn.estimated_hours, workingHoursPerDay)}人天</span>
-                        <Pencil className="h-3 w-3 opacity-50" />
+                        {!readOnly && <Pencil className="h-3 w-3 opacity-50" />}
                       </div>
                     )}
                   </TableCell>
-                  <TableCell>
-                    <Button
-                      size="icon"
-                      variant={fn.is_verified ? 'default' : 'ghost'}
-                      className={`h-8 w-8 ${fn.is_verified ? 'bg-green-600 hover:bg-green-700' : ''}`}
-                      onClick={() => handleToggleVerified(fn.id, fn.is_verified)}
-                      disabled={isPending}
-                      title={fn.is_verified ? '取消验证' : '标记为已验证'}
-                    >
-                      {fn.is_verified ? (
-                        <ShieldCheck className="h-4 w-4" />
-                      ) : (
-                        <ShieldOff className="h-4 w-4 opacity-50" />
-                      )}
-                    </Button>
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8 text-red-500 hover:text-red-600"
-                      onClick={() => handleDelete(fn.id)}
-                      disabled={isPending}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
+                  {!readOnly && (
+                    <TableCell>
+                      <Button
+                        size="icon"
+                        variant={fn.is_verified ? 'default' : 'ghost'}
+                        className={`h-8 w-8 ${fn.is_verified ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                        onClick={() => handleToggleVerified(fn.id, fn.is_verified)}
+                        disabled={isPending}
+                        title={fn.is_verified ? '取消验证' : '标记为已验证'}
+                      >
+                        {fn.is_verified ? (
+                          <ShieldCheck className="h-4 w-4" />
+                        ) : (
+                          <ShieldOff className="h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
+                    </TableCell>
+                  )}
+                  {!readOnly && (
+                    <TableCell>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-red-500 hover:text-red-600"
+                        onClick={() => handleDelete(fn.id)}
+                        disabled={isPending}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))
             ))}
