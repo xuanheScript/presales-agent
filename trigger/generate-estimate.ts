@@ -2,14 +2,16 @@ import { task } from '@trigger.dev/sdk'
 import { z } from 'zod'
 import {
   beginPresalesExecution,
-  classifyExecutionError,
   completePresalesExecution,
   executePreparedPresalesWorkflow,
-  finishPresalesExecution,
   preparePresalesExecutionForWorker,
   PresalesExecutionError,
-  type PresalesExecutionHandle,
 } from '@/lib/agents/execution-service'
+import {
+  finalizePresalesExecutionByRunId,
+  hashWorkUnitValue,
+  initializePresalesExecutionPlan,
+} from '@/lib/agents/work-unit-store'
 import { flushLangfuse, initLangfuse } from '@/lib/observability/langfuse'
 
 const payloadSchema = z.strictObject({
@@ -18,7 +20,11 @@ const payloadSchema = z.strictObject({
   requirementBaselineId: z.uuid(),
 })
 
-export const generateEstimateTask = task({
+export const generateEstimateTask = task<
+  'generate-estimate',
+  z.input<typeof payloadSchema>,
+  { executionId: string; estimateVersionId: string; revisionCommitted: boolean }
+>({
   id: 'generate-estimate',
   maxDuration: 14_400,
   retry: {
@@ -28,10 +34,21 @@ export const generateEstimateTask = task({
     factor: 2,
     randomize: true,
   },
+  onFailure: async ({ ctx, error, signal }) => {
+    try {
+      const { classifyExecutionError } = await import('@/lib/agents/execution-service')
+      await finalizePresalesExecutionByRunId({
+        orchestrationRunId: ctx.run.id,
+        status: classifyExecutionError(error, signal),
+        errorMessage: error instanceof Error ? error.message : '后台估算永久失败',
+      })
+    } catch (finalizeError) {
+      console.error('[Trigger] 永久失败终态保存失败，将由租约巡检收敛:', finalizeError)
+    }
+  },
   run: async (payload: z.input<typeof payloadSchema>, { ctx, signal }) => {
     const parsed = payloadSchema.parse(payload)
     initLangfuse()
-    let handle: PresalesExecutionHandle | null = null
 
     try {
       const prepared = await preparePresalesExecutionForWorker(
@@ -39,7 +56,7 @@ export const generateEstimateTask = task({
         parsed.projectId,
         parsed.requirementBaselineId
       )
-      handle = await beginPresalesExecution(prepared, 'run', ctx.run.id)
+      const handle = await beginPresalesExecution(prepared, 'run', ctx.run.id)
       if (handle.existingEstimateVersionId) {
         return {
           executionId: handle.executionId,
@@ -47,7 +64,21 @@ export const generateEstimateTask = task({
           revisionCommitted: true,
         }
       }
-      const result = await executePreparedPresalesWorkflow(handle, { signal })
+      await initializePresalesExecutionPlan({
+        actorUserId: prepared.userId,
+        executionId: handle.executionId,
+        baselineId: prepared.requirementBaselineId,
+        contentHash: prepared.requirementBaselineContentHash,
+        capacityPlan: prepared.capacityPlan,
+        profileVersion: prepared.provenance.modelProfileVersion,
+        discoveryVersion: 'full-document-discovery-v1',
+        promptBundleHash: hashWorkUnitValue(prepared.provenance.promptVersions),
+      })
+      const result = await executePreparedPresalesWorkflow(handle, {
+        signal,
+        workerId: ctx.run.id,
+        durableDiscovery: true,
+      })
 
       if (!result.success || result.error) {
         throw new PresalesExecutionError(result.error || '工作流执行失败', 500)
@@ -59,19 +90,9 @@ export const generateEstimateTask = task({
         estimateVersionId,
         revisionCommitted: true,
       }
-    } catch (error) {
-      if (handle) {
-        try {
-          await finishPresalesExecution(handle, classifyExecutionError(error, signal), error)
-        } catch (finishError) {
-          console.error('[Trigger] 估算执行终态保存失败，将由巡检任务修复:', {
-            executionId: handle.executionId,
-            error: finishError instanceof Error ? finishError.message : 'unknown',
-          })
-        }
-      }
-      throw error
     } finally {
+      // Trigger 的 attempt 失败时保持 execution running，由相同 run ID 的后续 attempt
+      // 复用已成功工作单元；永久失败由租约巡检统一收敛。
       await flushLangfuse()
     }
   },

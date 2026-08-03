@@ -18,6 +18,10 @@ import {
   createPendingWorkflowResult,
   encodeSseEvent,
 } from '@/lib/agents/sse-protocol'
+import {
+  hashWorkUnitValue,
+  initializePresalesExecutionPlan,
+} from '@/lib/agents/work-unit-store'
 
 export const maxDuration = 300
 
@@ -33,6 +37,16 @@ export async function POST(req: Request) {
     const { projectId, requirementBaselineId }: RunRequest = await req.json()
     const prepared = await preparePresalesExecution(projectId, requirementBaselineId)
     handle = await beginPresalesExecution(prepared, 'stream')
+    await initializePresalesExecutionPlan({
+      actorUserId: prepared.userId,
+      executionId: handle.executionId,
+      baselineId: prepared.requirementBaselineId,
+      contentHash: prepared.requirementBaselineContentHash,
+      capacityPlan: prepared.capacityPlan,
+      profileVersion: prepared.provenance.modelProfileVersion,
+      discoveryVersion: 'full-document-discovery-v1',
+      promptBundleHash: hashWorkUnitValue(prepared.provenance.promptVersions),
+    })
   } catch (error) {
     const status = error instanceof PresalesExecutionError ? error.status : 500
     return new Response(

@@ -68,9 +68,10 @@ describe('Breakdown 分批角色工时', () => {
     )
   })
 
-  it('拒绝超过同步上限的功能列表', () => {
-    expect(() => assignFunctionIds('REQ-1', createFunctions(49)))
-      .toThrow('同步功能拆解最多支持 48 个功能')
+  it('以明确运营预算替代旧 48 功能业务上限', () => {
+    expect(assignFunctionIds('REQ-1', createFunctions(49))).toHaveLength(49)
+    expect(() => assignFunctionIds('REQ-1', createFunctions(501)))
+      .toThrow('功能数量 501 超过当前运营预算 500')
   })
 
   it('校验完整输出并将角色 ID 还原为角色名', () => {

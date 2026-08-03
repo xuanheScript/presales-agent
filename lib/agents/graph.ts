@@ -14,7 +14,6 @@ import {
   type WorkflowResult,
   type WorkflowSystemConfig,
 } from './state'
-import { analyzeNode } from './nodes/analyze'
 import { breakdownNode } from './nodes/breakdown'
 import { estimateNode } from './nodes/estimate'
 import { calculateNode } from './nodes/calculate'
@@ -50,25 +49,17 @@ function shouldContinue(state: PresalesState): string {
  * 创建售前成本估算工作流图
  *
  * 工作流程：
- * START → analyze → breakdown → estimate → calculate → END
+ * START → breakdown（消费全文 discovery 并完成角色工时扩展）→ estimate → calculate → END
  *
  * 每个节点都可能因错误提前终止工作流
  */
 const workflow = new StateGraph(PresalesStateAnnotation)
-  // 添加节点
-  .addNode('analyze', analyzeNode)
   .addNode('breakdown', breakdownNode)
   .addNode('estimate', estimateNode)
   .addNode('calculate', calculateNode)
 
-  // 定义边：从 START 到 analyze
-  .addEdge(START, 'analyze')
-
-  // analyze 节点的条件路由
-  .addConditionalEdges('analyze', shouldContinue, {
-    breakdown: 'breakdown',
-    end: END,
-  })
+  // 统一 Map 在 breakdown 内同时产出 analysis 与 functions。
+  .addEdge(START, 'breakdown')
 
   // breakdown 节点的条件路由
   .addConditionalEdges('breakdown', shouldContinue, {
@@ -109,7 +100,11 @@ export async function runPresalesWorkflow(
   projectDescription: string = '',
   systemConfig: WorkflowSystemConfig | null = null,
   options: WorkflowRunOptions = {},
-  analysisPromptTemplate: string = ''
+  analysisPromptTemplate: string = '',
+  prefetchedDiscovery: {
+    analysis: NonNullable<PresalesState['analysis']>
+    functions: PresalesState['functions']
+  } | null = null
 ): Promise<WorkflowResult> {
   console.log('[Graph] 开始执行售前成本估算工作流:', {
     projectId,
@@ -128,7 +123,8 @@ export async function runPresalesWorkflow(
       canonicalRequirement,
       projectDescription,
       systemConfig,
-      analysisPromptTemplate
+      analysisPromptTemplate,
+      prefetchedDiscovery
     )
 
     return await withAbortSignal(
@@ -185,7 +181,11 @@ export async function* streamPresalesWorkflow(
   projectDescription: string = '',
   systemConfig: WorkflowSystemConfig | null = null,
   options: WorkflowRunOptions = {},
-  analysisPromptTemplate: string = ''
+  analysisPromptTemplate: string = '',
+  prefetchedDiscovery: {
+    analysis: NonNullable<PresalesState['analysis']>
+    functions: PresalesState['functions']
+  }
 ): AsyncIterable<{ step: string; state: Partial<PresalesState> }> {
   console.log('[Graph] 开始流式执行工作流')
 
@@ -195,7 +195,8 @@ export async function* streamPresalesWorkflow(
     canonicalRequirement,
     projectDescription,
     systemConfig,
-    analysisPromptTemplate
+    analysisPromptTemplate,
+    prefetchedDiscovery
   )
   const managed = createManagedAbortSignal(
     [options.signal],

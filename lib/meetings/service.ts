@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { defaultModelProfile } from '@/lib/ai/model-profile'
 import { createClient } from '@/lib/supabase/server'
 import {
   MeetingPermissionError,
@@ -451,11 +452,10 @@ export async function startMeetingAnalysis(input: {
   const user = await requireUser(supabase)
   await requireProjectOwner(supabase, input.projectId, user.id)
 
-  const modelId = process.env.DEEPSEEK_MODEL || 'deepseek-chat'
   const { data, error } = await supabase.rpc('start_meeting_analysis', {
     p_project_id: input.projectId,
     p_meeting_id: input.meetingId,
-    p_model_id: modelId,
+    p_model_id: defaultModelProfile.id,
     p_prompt_version: MEETING_ANALYSIS_PROMPT_VERSION,
     p_schema_version: MEETING_ANALYSIS_SCHEMA_VERSION,
     p_config_version: MEETING_ANALYSIS_CONFIG_VERSION,

@@ -28,6 +28,10 @@ export interface RequirementWorkbenchSource {
   href: string
   pendingCount: number
   canApply: boolean
+  documentDetail?: {
+    content: string
+    createdAt: string
+  }
 }
 
 export interface RequirementWorkbenchData {
@@ -391,6 +395,12 @@ export async function getRequirementWorkbench(projectId: string): Promise<Requir
       href: '#requirement-sources',
       pendingCount: isIncluded ? 0 : 1,
       canApply: !isIncluded,
+      documentDetail: kind === 'document'
+        ? {
+            content: requirement.raw_content,
+            createdAt: requirement.created_at,
+          }
+        : undefined,
     }
   })
 

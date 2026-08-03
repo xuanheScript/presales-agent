@@ -177,6 +177,7 @@ export async function estimateNode(
         prompt,
         abortSignal: signal,
         maxRetries: modelGateway.maxRetries,
+        providerOptions: modelGateway.profile.providerOptions,
         experimental_telemetry: createTelemetryConfig('workflow-estimate', {
           projectId: state.projectId,
           requirementBaselineId: state.requirementBaselineId,

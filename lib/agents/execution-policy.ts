@@ -2,7 +2,8 @@ import type { RunnableConfig } from '@langchain/core/runnables'
 
 export const EXECUTION_POLICY = {
   presalesRouteTimeoutMs: 280_000,
-  workflowNodeTimeoutMs: 90_000,
+  presalesWorkerTimeoutMs: 13_800_000,
+  workflowNodeTimeoutMs: 600_000,
   chatTimeoutMs: 105_000,
   embeddingTimeoutMs: 15_000,
   aiMaxRetries: 1,

@@ -6,10 +6,10 @@ import type {
   RoleEstimate,
 } from '../state'
 
-export const BREAKDOWN_PROTOCOL_VERSION = 'evidence_anchored_v3'
+export const BREAKDOWN_PROTOCOL_VERSION = 'full_document_role_effort_v1'
 export const ROLE_EFFORT_BATCH_TARGET_SIZE = 10
 export const ROLE_EFFORT_BATCH_MAX_SIZE = 12
-export const ROLE_EFFORT_MAX_FUNCTIONS = 48
+export const ROLE_EFFORT_MAX_FUNCTIONS = 500
 export const ROLE_EFFORT_MAX_ROLES = 16
 export const ROLE_EFFORT_MAX_DAYS = 120
 
@@ -63,7 +63,7 @@ export function assignFunctionIds(
     throw new Error('功能列表不能为空')
   }
   if (modules.length > ROLE_EFFORT_MAX_FUNCTIONS) {
-    throw new Error(`同步功能拆解最多支持 ${ROLE_EFFORT_MAX_FUNCTIONS} 个功能`)
+    throw new Error(`功能数量 ${modules.length} 超过当前运营预算 ${ROLE_EFFORT_MAX_FUNCTIONS}`)
   }
 
   const seenIds = new Set<string>()

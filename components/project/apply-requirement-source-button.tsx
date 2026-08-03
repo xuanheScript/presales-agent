@@ -12,6 +12,7 @@ interface ApplyRequirementSourceButtonProps {
   requirementId: string
   expectedBaselineId: string | null
   compact?: boolean
+  onApplied?: () => void
 }
 
 export function ApplyRequirementSourceButton({
@@ -19,6 +20,7 @@ export function ApplyRequirementSourceButton({
   requirementId,
   expectedBaselineId,
   compact = false,
+  onApplied,
 }: ApplyRequirementSourceButtonProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -38,6 +40,7 @@ export function ApplyRequirementSourceButton({
       toast.success(expectedBaselineId ? '项目需求已更新' : '正式需求已创建', {
         description: '新的正式需求版本已生效，旧版本仍保留用于审计。',
       })
+      onApplied?.()
       router.refresh()
     })
   }

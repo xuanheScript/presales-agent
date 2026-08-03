@@ -1,9 +1,11 @@
 import { DEFAULT_CONFIG } from '@/constants'
+import { defaultModelProfile } from '@/lib/ai/model-profile'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { withLangfuseTrace } from '@/lib/observability/langfuse'
 import {
   EXECUTION_POLICY,
+  createManagedAbortSignal,
   getErrorMessage,
   isAbortError,
   type WorkflowRunOptions,
@@ -15,12 +17,26 @@ import {
 } from './execution-errors'
 import { buildPresalesPersistenceSnapshot } from './persistence-snapshot'
 import { runPresalesWorkflow, streamPresalesWorkflow } from './graph'
-import { getAnalysisPromptSnapshot } from './nodes/analyze'
+import {
+  getAnalysisPromptSnapshot,
+  getAnalysisPromptSnapshotForWorker,
+} from './nodes/analyze'
+import {
+  createFullDocumentCapacityPlan,
+  type FullDocumentCapacityPlan,
+} from './nodes/full-document-discovery'
+import { createInitialState } from './state'
 import type {
   WorkflowResult,
   WorkflowSystemConfig,
   PresalesState,
 } from './state'
+import { runPersistedFullDocumentDiscovery } from './persisted-full-document-discovery'
+import {
+  claimPresalesExecution,
+  heartbeatPresalesExecution,
+  type PresalesExecutionLease,
+} from './work-unit-store'
 import type { ProjectStatus } from '@/types'
 
 export type PresalesTransport = 'run' | 'stream'
@@ -42,15 +58,17 @@ export interface PreparedPresalesExecution {
   analysisPromptTemplate: string
   previousProjectStatus: ProjectStatus
   systemConfig: WorkflowSystemConfig
+  capacityPlan: FullDocumentCapacityPlan
   provenance: PresalesExecutionProvenance
 }
 
 export interface PresalesExecutionProvenance {
   modelId: string
-  workflowVersion: 'presales-workflow-v1'
+  modelProfileVersion: string
+  workflowVersion: 'presales-full-document-v1'
   promptVersions: {
     analysis: string
-    breakdown: 'batched_structured_v2'
+    breakdown: 'full_document_discovery_v1'
     estimate: 'buffer-estimation-v1'
     calculate: 'formal-workflow-v1'
   }
@@ -116,6 +134,7 @@ export interface PresalesExecutionHandle {
   prepared: PreparedPresalesExecution
   startedAt: number
   transport: PresalesTransport
+  lease: PresalesExecutionLease | null
 }
 
 function assertUuidLike(value: string, field: string): void {
@@ -222,6 +241,18 @@ export async function preparePresalesExecution(
     currency: dbConfig?.currency || DEFAULT_CONFIG.CURRENCY,
   }
 
+  const capacityPlan = createFullDocumentCapacityPlan(
+    baselineResult.data.canonical_content,
+    defaultModelProfile
+  )
+  if (!capacityPlan.fitsContextWindow) {
+    throw new PresalesExecutionError(
+      `完整需求预计 ${capacityPlan.estimatedInputTokens} Token，超过全文分析可用输入容量 ${capacityPlan.availableInputTokens} Token；系统不会截断、切片或自动降级`,
+      400,
+      'FULL_DOCUMENT_CAPACITY_EXCEEDED'
+    )
+  }
+
   return {
     userId: user.id,
     projectId,
@@ -233,12 +264,14 @@ export async function preparePresalesExecution(
     analysisPromptTemplate: analysisPrompt.content,
     previousProjectStatus: projectResult.data.status as ProjectStatus,
     systemConfig,
+    capacityPlan,
     provenance: {
-      modelId: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
-      workflowVersion: 'presales-workflow-v1',
+      modelId: defaultModelProfile.id,
+      modelProfileVersion: defaultModelProfile.profileVersion,
+      workflowVersion: 'presales-full-document-v1',
       promptVersions: {
         analysis: analysisPrompt.version,
-        breakdown: 'batched_structured_v2',
+        breakdown: 'full_document_discovery_v1',
         estimate: 'buffer-estimation-v1',
         calculate: 'formal-workflow-v1',
       },
@@ -302,8 +335,31 @@ export async function preparePresalesExecutionForWorker(
     throw new PresalesExecutionError(`查询成本配置失败: ${configResult.error.message}`, 500)
   }
 
-  const analysisPrompt = await getAnalysisPromptSnapshot()
+  const analysisPrompt = await getAnalysisPromptSnapshotForWorker()
   const dbConfig = configResult.data
+  const systemConfig = {
+    laborCostPerDay: numericConfigValue(
+      dbConfig?.default_labor_cost_per_day,
+      DEFAULT_CONFIG.LABOR_COST_PER_DAY
+    ),
+    riskBufferPercentage: numericConfigValue(
+      dbConfig?.default_risk_buffer_percentage,
+      DEFAULT_CONFIG.RISK_BUFFER_PERCENTAGE
+    ),
+    workingHoursPerDay: DEFAULT_CONFIG.WORKING_HOURS_PER_DAY,
+    currency: dbConfig?.currency || DEFAULT_CONFIG.CURRENCY,
+  }
+  const capacityPlan = createFullDocumentCapacityPlan(
+    baselineResult.data.canonical_content,
+    defaultModelProfile
+  )
+  if (!capacityPlan.fitsContextWindow) {
+    throw new PresalesExecutionError(
+      `完整需求预计 ${capacityPlan.estimatedInputTokens} Token，超过全文分析可用输入容量 ${capacityPlan.availableInputTokens} Token；系统不会截断、切片或自动降级`,
+      400,
+      'FULL_DOCUMENT_CAPACITY_EXCEEDED'
+    )
+  }
   return {
     userId: actorUserId,
     projectId,
@@ -314,24 +370,15 @@ export async function preparePresalesExecutionForWorker(
     projectDescription: baselineResult.data.project_description_snapshot || '',
     analysisPromptTemplate: analysisPrompt.content,
     previousProjectStatus: projectResult.data.status as ProjectStatus,
-    systemConfig: {
-      laborCostPerDay: numericConfigValue(
-        dbConfig?.default_labor_cost_per_day,
-        DEFAULT_CONFIG.LABOR_COST_PER_DAY
-      ),
-      riskBufferPercentage: numericConfigValue(
-        dbConfig?.default_risk_buffer_percentage,
-        DEFAULT_CONFIG.RISK_BUFFER_PERCENTAGE
-      ),
-      workingHoursPerDay: DEFAULT_CONFIG.WORKING_HOURS_PER_DAY,
-      currency: dbConfig?.currency || DEFAULT_CONFIG.CURRENCY,
-    },
+    systemConfig,
+    capacityPlan,
     provenance: {
-      modelId: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
-      workflowVersion: 'presales-workflow-v1',
+      modelId: defaultModelProfile.id,
+      modelProfileVersion: defaultModelProfile.profileVersion,
+      workflowVersion: 'presales-full-document-v1',
       promptVersions: {
         analysis: analysisPrompt.version,
-        breakdown: 'batched_structured_v2',
+        breakdown: 'full_document_discovery_v1',
         estimate: 'buffer-estimation-v1',
         calculate: 'formal-workflow-v1',
       },
@@ -358,9 +405,13 @@ export async function beginPresalesExecution(
       requirementBaselineContentHash: prepared.requirementBaselineContentHash,
       transport,
       orchestrationRunId: orchestrationRunId || null,
+      workerId: orchestrationRunId || `inline:${transport}`,
       previousProjectStatus: prepared.previousProjectStatus,
       requirementLength: prepared.canonicalRequirement.length,
       projectDescriptionLength: prepared.projectDescription.length,
+      inputFingerprint: prepared.requirementBaselineContentHash,
+      operationId: orchestrationRunId || prepared.requirementBaselineContentHash,
+      capacityPlan: prepared.capacityPlan,
     },
     p_system_config: prepared.systemConfig,
     p_model_id: prepared.provenance.modelId,
@@ -402,6 +453,7 @@ export async function beginPresalesExecution(
     prepared,
     startedAt: Date.now(),
     transport,
+    lease: null,
   }
 }
 
@@ -410,10 +462,26 @@ export async function completePresalesExecution(
   result: WorkflowResult
 ): Promise<string> {
   const snapshot = buildPresalesPersistenceSnapshot(result, handle.prepared)
+  const lease = handle.lease ?? await claimPresalesExecution({
+    actorUserId: handle.prepared.userId,
+    executionId: handle.executionId,
+    workerId: `inline:${handle.transport}`,
+    leaseSeconds: 900,
+  })
+  handle.lease = lease
+  await heartbeatPresalesExecution({
+    lease,
+    stage: 'committing',
+    progressPercent: 95,
+    leaseSeconds: 900,
+  })
   const adminSupabase = createAdminClient()
   const { data, error } = await adminSupabase.rpc('commit_presales_execution', {
     p_actor_user_id: handle.prepared.userId,
     p_execution_id: handle.executionId,
+    p_execution_lease_token: lease.leaseToken,
+    p_execution_lease_generation: lease.leaseGeneration,
+    p_worker_id: lease.workerId,
     p_snapshot: snapshot,
     p_execution_time_ms: Date.now() - handle.startedAt,
   })
@@ -430,9 +498,19 @@ export async function finishPresalesExecution(
   status: PresalesExecutionTerminalStatus,
   error: unknown
 ): Promise<void> {
+  const lease = handle.lease ?? await claimPresalesExecution({
+    actorUserId: handle.prepared.userId,
+    executionId: handle.executionId,
+    workerId: `inline:${handle.transport}`,
+    leaseSeconds: 900,
+  })
+  handle.lease = lease
   const params = {
     p_actor_user_id: handle.prepared.userId,
     p_execution_id: handle.executionId,
+    p_execution_lease_token: lease.leaseToken,
+    p_execution_lease_generation: lease.leaseGeneration,
+    p_worker_id: lease.workerId,
     p_status: status,
     p_error_message: getErrorMessage(error, status === 'cancelled' ? '用户取消执行' : '执行失败'),
     p_execution_time_ms: Date.now() - handle.startedAt,
@@ -463,11 +541,17 @@ export async function finishPresalesExecution(
 
 export async function executePreparedPresalesWorkflow(
   handle: PresalesExecutionHandle,
-  options: WorkflowRunOptions = {}
+  options: WorkflowRunOptions & { workerId?: string; durableDiscovery?: boolean } = {}
 ): Promise<WorkflowResult> {
   const { prepared } = handle
+  const heartbeatAbort = new AbortController()
+  const managed = createManagedAbortSignal([options.signal, heartbeatAbort.signal])
+  let executionHeartbeat: ReturnType<typeof setInterval> | null = null
+  let heartbeatError: unknown = null
+  let heartbeatActive: Promise<void> | null = null
 
-  return withLangfuseTrace(
+  try {
+    return await withLangfuseTrace(
     'presales-workflow',
     {
       input: {
@@ -483,6 +567,45 @@ export async function executePreparedPresalesWorkflow(
     },
     async (observation) => {
       try {
+        const prefetchedDiscovery = options.durableDiscovery
+          ? await runPersistedFullDocumentDiscovery({
+              actorUserId: prepared.userId,
+              executionId: handle.executionId,
+              workerId: options.workerId || handle.executionId,
+              projectId: prepared.projectId,
+              state: {
+                ...createInitialState(
+                  prepared.projectId,
+                  prepared.requirementBaselineId,
+                  prepared.canonicalRequirement,
+                  prepared.projectDescription,
+                  prepared.systemConfig,
+                  prepared.analysisPromptTemplate
+                ),
+              } as PresalesState,
+              signal: managed.signal,
+              config: { configurable: { executionId: handle.executionId } },
+              onLeaseClaimed: (lease) => {
+                handle.lease = lease
+              },
+            })
+          : null
+        if (handle.lease) {
+          executionHeartbeat = setInterval(() => {
+            if (!handle.lease || heartbeatActive || heartbeatError) return
+            heartbeatActive = heartbeatPresalesExecution({
+              lease: handle.lease,
+              stage: 'enriching',
+              progressPercent: 82,
+              leaseSeconds: 900,
+            }).catch((error) => {
+              heartbeatError = error
+              heartbeatAbort.abort(error)
+            }).finally(() => {
+              heartbeatActive = null
+            })
+          }, 45_000)
+        }
         const result = await runPresalesWorkflow(
           prepared.projectId,
           prepared.requirementBaselineId,
@@ -491,11 +614,32 @@ export async function executePreparedPresalesWorkflow(
           prepared.systemConfig,
           {
             ...options,
+            signal: managed.signal,
             executionId: handle.executionId,
-            timeoutMs: options.timeoutMs ?? EXECUTION_POLICY.presalesRouteTimeoutMs,
+            timeoutMs: options.timeoutMs ?? (
+              handle.transport === 'run'
+                ? EXECUTION_POLICY.presalesWorkerTimeoutMs
+                : EXECUTION_POLICY.presalesRouteTimeoutMs
+            ),
           },
-          prepared.analysisPromptTemplate
+          prepared.analysisPromptTemplate,
+          prefetchedDiscovery
+            ? {
+                analysis: prefetchedDiscovery.analysis,
+                functions: prefetchedDiscovery.functions,
+              }
+            : null
         )
+        if (heartbeatActive) await heartbeatActive
+        if (heartbeatError) throw heartbeatError
+        if (handle.lease) {
+          await heartbeatPresalesExecution({
+            lease: handle.lease,
+            stage: 'calculating',
+            progressPercent: 90,
+            leaseSeconds: 900,
+          })
+        }
 
         observation?.update({
           output: { success: result.success, functionsCount: result.functions.length },
@@ -509,9 +653,15 @@ export async function executePreparedPresalesWorkflow(
           statusMessage: getErrorMessage(error, '工作流执行失败'),
         })
         throw error
+      } finally {
+        if (executionHeartbeat) clearInterval(executionHeartbeat)
+        if (heartbeatActive) await heartbeatActive
       }
     }
-  )
+    )
+  } finally {
+    managed.dispose()
+  }
 }
 
 export async function* streamPreparedPresalesWorkflow(
@@ -519,6 +669,25 @@ export async function* streamPreparedPresalesWorkflow(
   options: WorkflowRunOptions = {}
 ): AsyncIterable<{ step: string; state: Partial<PresalesState> }> {
   const { prepared } = handle
+  const prefetchedDiscovery = await runPersistedFullDocumentDiscovery({
+    actorUserId: prepared.userId,
+    executionId: handle.executionId,
+    workerId: `inline:${handle.transport}`,
+    projectId: prepared.projectId,
+    state: createInitialState(
+      prepared.projectId,
+      prepared.requirementBaselineId,
+      prepared.canonicalRequirement,
+      prepared.projectDescription,
+      prepared.systemConfig,
+      prepared.analysisPromptTemplate
+    ) as PresalesState,
+    signal: options.signal,
+    config: { configurable: { executionId: handle.executionId } },
+    onLeaseClaimed: (lease) => {
+      handle.lease = lease
+    },
+  })
 
   yield* streamPresalesWorkflow(
     prepared.projectId,
@@ -531,6 +700,18 @@ export async function* streamPreparedPresalesWorkflow(
       executionId: handle.executionId,
       timeoutMs: options.timeoutMs ?? EXECUTION_POLICY.presalesRouteTimeoutMs,
     },
-    prepared.analysisPromptTemplate
+    prepared.analysisPromptTemplate,
+    {
+      analysis: prefetchedDiscovery.analysis,
+      functions: prefetchedDiscovery.functions,
+    }
   )
+  if (handle.lease) {
+    await heartbeatPresalesExecution({
+      lease: handle.lease,
+      stage: 'calculating',
+      progressPercent: 90,
+      leaseSeconds: 900,
+    })
+  }
 }

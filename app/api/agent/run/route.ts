@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server'
 import { tasks } from '@trigger.dev/sdk'
 import type { generateEstimateTask } from '@/trigger/generate-estimate'
-import { preparePresalesExecution, PresalesExecutionError } from '@/lib/agents/execution-service'
+import {
+  beginPresalesExecution,
+  preparePresalesExecution,
+  PresalesExecutionError,
+} from '@/lib/agents/execution-service'
 
 interface RunRequest {
   projectId: string
@@ -29,10 +33,12 @@ export async function POST(req: Request) {
       }
     )
 
+    const execution = await beginPresalesExecution(prepared, 'run', handle.id)
     return NextResponse.json(
       {
         accepted: true,
         backgroundRunId: handle.id,
+        executionId: execution.executionId,
       },
       { status: 202 }
     )

@@ -9,6 +9,8 @@ import {
   withAbortSignal,
 } from '../execution-policy'
 import { getActiveTemplate } from '@/app/actions/templates'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { findActiveTemplateWithClient } from '@/lib/templates/active-template'
 import { createTelemetryConfig } from '@/lib/observability/langfuse'
 import type { PresalesState, AgentAnalysisResult } from '../state'
 
@@ -71,14 +73,16 @@ export interface AnalysisPromptSnapshot {
   version: string
 }
 
-/**
- * 固定本次执行使用的需求分析提示词，避免 begin 后模板变化影响结果来源。
- */
-export async function getAnalysisPromptSnapshot(
+type ActiveAnalysisTemplateReader = (
+  industry?: string
+) => ReturnType<typeof getActiveTemplate>
+
+async function createAnalysisPromptSnapshot(
+  readActiveTemplate: ActiveAnalysisTemplateReader,
   industry?: string | null
 ): Promise<AnalysisPromptSnapshot> {
   try {
-    const template = await getActiveTemplate('requirement_analysis', industry || undefined)
+    const template = await readActiveTemplate(industry || undefined)
     if (template?.prompt_content) {
       console.log('[Agent] 使用数据库模板:', template.template_name)
       return {
@@ -94,6 +98,38 @@ export async function getAnalysisPromptSnapshot(
     content: DEFAULT_ANALYSIS_PROMPT,
     version: 'requirement-analysis-default-v1',
   }
+}
+
+/**
+ * 固定本次请求执行使用的需求分析提示词。
+ */
+export async function getAnalysisPromptSnapshot(
+  industry?: string | null
+): Promise<AnalysisPromptSnapshot> {
+  return createAnalysisPromptSnapshot(
+    (templateIndustry) => getActiveTemplate(
+      'requirement_analysis',
+      templateIndustry
+    ),
+    industry
+  )
+}
+
+/**
+ * 固定后台执行使用的需求分析提示词，不依赖 Next.js 请求上下文。
+ */
+export async function getAnalysisPromptSnapshotForWorker(
+  industry?: string | null
+): Promise<AnalysisPromptSnapshot> {
+  const supabase = createAdminClient()
+  return createAnalysisPromptSnapshot(
+    (templateIndustry) => findActiveTemplateWithClient(
+      supabase,
+      'requirement_analysis',
+      templateIndustry
+    ),
+    industry
+  )
 }
 
 /**
@@ -142,6 +178,7 @@ export async function analyzeNode(
         prompt,
         abortSignal: signal,
         maxRetries: modelGateway.maxRetries,
+        providerOptions: modelGateway.profile.providerOptions,
         experimental_telemetry: createTelemetryConfig('workflow-analyze', {
           projectId: state.projectId,
           requirementBaselineId: state.requirementBaselineId,

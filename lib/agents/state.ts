@@ -182,6 +182,15 @@ export const PresalesStateAnnotation = Annotation.Root({
     reducer: (_, next) => next,
   }),
 
+  /** durable 后台执行已完成的统一 discovery 结果 */
+  prefetchedDiscovery: Annotation<{
+    analysis: AgentAnalysisResult
+    functions: AgentFunctionModule[]
+  } | null>({
+    default: () => null,
+    reducer: (_, next) => next,
+  }),
+
   /** 系统配置（用于成本计算） */
   systemConfig: Annotation<WorkflowSystemConfig | null>({
     default: () => null,
@@ -257,7 +266,11 @@ export function createInitialState(
   canonicalRequirement: string,
   projectDescription: string = '',
   systemConfig: WorkflowSystemConfig | null = null,
-  analysisPromptTemplate: string = ''
+  analysisPromptTemplate: string = '',
+  prefetchedDiscovery: {
+    analysis: AgentAnalysisResult
+    functions: AgentFunctionModule[]
+  } | null = null
 ): Partial<PresalesState> {
   return {
     projectId,
@@ -266,13 +279,14 @@ export function createInitialState(
     projectDescription,
     systemConfig,
     analysisPromptTemplate,
+    prefetchedDiscovery,
     analysis: null,
     functions: [],
     identifiedRoles: [],
     additionalWork: [],
     estimation: null,
     cost: null,
-    currentStep: 'analyze',
+    currentStep: 'breakdown',
     error: null,
     isComplete: false,
   }

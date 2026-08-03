@@ -18,15 +18,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress'
 import {
   AGENT_RUN_POLL_INTERVAL_MS,
-  queuedRunError,
 } from '@/lib/agents/run-status'
 import { cn } from '@/lib/utils'
 
 const WORKFLOW_STEPS = [
-  { key: 'analyze', label: '需求理解', description: '读取正式需求，识别目标、约束与范围' },
-  { key: 'breakdown', label: '方案拆解', description: '拆分功能模块并匹配历史参考' },
-  { key: 'estimate', label: '工时评估', description: '估算角色投入、工期和额外工作' },
-  { key: 'calculate', label: '成本计算', description: '按确定性规则汇总成本并生成版本' },
+  { key: 'discover', label: '全文需求理解', description: '整体理解正式需求的目标、范围与约束' },
+  { key: 'validate', label: '结构化结果校验', description: '校验结构化方案的完整性与一致性' },
+  { key: 'estimate', label: '角色与工时估算', description: '估算各角色投入、工期和额外工作' },
+  { key: 'calculate', label: '成本计算', description: '按确定性规则汇总角色投入与项目成本' },
 ] as const
 
 type WorkflowStepKey = (typeof WORKFLOW_STEPS)[number]['key']
@@ -42,13 +41,12 @@ export function AgentProgress({ projectId, requirementBaselineId }: AgentProgres
   const [runState, setRunState] = useState<RunState>('idle')
   const [currentStep, setCurrentStep] = useState<WorkflowStepKey | null>(null)
   const [completedSteps, setCompletedSteps] = useState<WorkflowStepKey[]>([])
+  const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [backgroundRunId, setBackgroundRunId] = useState<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => () => abortControllerRef.current?.abort(), [projectId, requirementBaselineId])
-
-  const progress = (completedSteps.length / WORKFLOW_STEPS.length) * 100
 
   const cancelWorkflow = useCallback(async () => {
     if (!backgroundRunId) return
@@ -78,7 +76,8 @@ export function AgentProgress({ projectId, requirementBaselineId }: AgentProgres
     setRunState('running')
     setError(null)
     setCompletedSteps([])
-    setCurrentStep('analyze')
+    setProgress(0)
+    setCurrentStep('discover')
 
     const controller = new AbortController()
     abortControllerRef.current = controller
@@ -101,7 +100,6 @@ export function AgentProgress({ projectId, requirementBaselineId }: AgentProgres
 
       const runId = startData.backgroundRunId
       setBackgroundRunId(runId)
-      const pollingStartedAt = Date.now()
       let finished = false
 
       while (!finished) {
@@ -113,41 +111,52 @@ export function AgentProgress({ projectId, requirementBaselineId }: AgentProgres
           { signal: controller.signal },
         )
         const statusData = await statusResponse.json() as {
-          status?: string
+          executionStatus?: string | null
+          stage?: string
+          progressPercent?: number
           isTerminal?: boolean
           estimateVersionId?: string | null
           error?: string
         }
         if (!statusResponse.ok) throw new Error(statusData.error || '查询方案分析状态失败')
 
-        const queueError = queuedRunError(statusData.status, Date.now() - pollingStartedAt)
-        if (queueError) {
-          await fetch(
-            `/api/agent/runs/${encodeURIComponent(runId)}?projectId=${encodeURIComponent(projectId)}`,
-            { method: 'DELETE', signal: controller.signal },
-          ).catch(() => undefined)
-          throw new Error(queueError)
-        }
-
-        if (statusData.status === 'DEQUEUED') {
-          setCompletedSteps(['analyze'])
-          setCurrentStep('breakdown')
-        } else if (statusData.status === 'EXECUTING') {
-          setCompletedSteps(['analyze', 'breakdown'])
+        const durableProgress = Math.max(0, Math.min(100, statusData.progressPercent ?? 0))
+        setProgress(durableProgress)
+        const stage = statusData.stage
+        if (stage === 'planning') {
+          setCompletedSteps([])
+          setCurrentStep('discover')
+        } else if (stage === 'discovering') {
+          if (durableProgress < 75) {
+            setCompletedSteps([])
+            setCurrentStep('discover')
+          } else {
+            setCompletedSteps(['discover'])
+            setCurrentStep('validate')
+          }
+        } else if (stage === 'enriching') {
+          setCompletedSteps(['discover', 'validate'])
           setCurrentStep('estimate')
-        } else if (statusData.status === 'WAITING') {
-          setCompletedSteps(['analyze', 'breakdown', 'estimate'])
+        } else if (stage === 'calculating') {
+          setCompletedSteps(['discover', 'validate', 'estimate'])
           setCurrentStep('calculate')
+        } else if (stage === 'committing') {
+          setCompletedSteps(WORKFLOW_STEPS.map((step) => step.key))
+          setCurrentStep(null)
+        } else if (stage === 'complete') {
+          setCompletedSteps(WORKFLOW_STEPS.map((step) => step.key))
+          setCurrentStep(null)
         }
 
         if (!statusData.isTerminal) continue
         finished = true
-        if (statusData.status !== 'COMPLETED' || !statusData.estimateVersionId) {
+        if (statusData.executionStatus !== 'completed' || !statusData.estimateVersionId) {
           throw new Error(statusData.error || '方案分析未成功完成')
         }
       }
 
       setCompletedSteps(WORKFLOW_STEPS.map((step) => step.key))
+      setProgress(100)
       setCurrentStep(null)
       setRunState('success')
       toast.success('方案与成本分析完成', {
@@ -187,7 +196,7 @@ export function AgentProgress({ projectId, requirementBaselineId }: AgentProgres
               生成方案与成本版本
             </CardTitle>
             <CardDescription className="mt-1">
-              本次分析绑定当前正式需求，完成后生成一份可追溯、可审核的不可变版本。
+              本次分析绑定当前正式需求，完成后生成一份可审核的不可变版本。
             </CardDescription>
           </div>
           {runState === 'running' ? <Badge variant="secondary">分析中</Badge> : null}

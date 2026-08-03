@@ -7,7 +7,6 @@ import {
   generateEmbeddings,
   buildEmbeddingText,
 } from '@/lib/ai/embedding'
-import { isAbortError } from '@/lib/agents/execution-policy'
 import type { EstimateReference } from '@/types'
 
 /**
@@ -53,66 +52,6 @@ export async function getEstimateReferences(options?: {
   }
 
   return data || []
-}
-
-/**
- * 为 breakdownNode 检索相关参考（向量语义检索）
- *
- * 检索策略：使用 embedding 向量相似度检索，失败时 fallback 到全局高频参考
- */
-export async function getReferencesForBreakdown(
-  queryText: string,
-  limit: number = 10,
-  options: { signal?: AbortSignal } = {}
-): Promise<EstimateReference[]> {
-  const supabase = await createClient()
-
-  // 尝试向量检索
-  try {
-    const queryEmbedding = await generateEmbedding(queryText, {
-      signal: options.signal,
-    })
-
-    let vectorQuery = supabase.rpc('match_estimate_references', {
-      query_embedding: JSON.stringify(queryEmbedding),
-      match_threshold: 0.3,
-      match_count: limit,
-    })
-    if (options.signal) {
-      vectorQuery = vectorQuery.abortSignal(options.signal)
-    }
-    const { data, error } = await vectorQuery
-
-    if (!error && data && data.length > 0) {
-      console.log('[RAG] 向量检索命中:', {
-        query: queryText.substring(0, 100),
-        resultCount: data.length,
-        similarities: data.map((d: EstimateReference & { similarity: number }) =>
-          d.similarity?.toFixed(3)
-        ),
-      })
-      return data
-    }
-  } catch (embeddingError) {
-    if (isAbortError(embeddingError, options.signal)) {
-      throw embeddingError
-    }
-
-    console.warn('[RAG] 向量检索失败，回退到全局高频参考:', embeddingError)
-  }
-
-  // Fallback: 全局高频参考
-  let fallbackQuery = supabase
-    .from('estimate_references')
-    .select('*')
-    .order('usage_count', { ascending: false })
-    .limit(limit)
-  if (options.signal) {
-    fallbackQuery = fallbackQuery.abortSignal(options.signal)
-  }
-  const { data: fallbackData } = await fallbackQuery
-
-  return fallbackData || []
 }
 
 /**
@@ -328,26 +267,6 @@ export async function deleteEstimateReference(
 
   revalidatePath('/function-library')
   return { success: true }
-}
-
-/**
- * 更新参考使用计数（fire-and-forget 调用）
- */
-export async function incrementReferenceUsage(ids: string[]): Promise<void> {
-  if (ids.length === 0) return
-
-  const supabase = await createClient()
-
-  // 逐个更新使用计数（Supabase 不支持批量 increment）
-  for (const id of ids) {
-    try {
-      await supabase.rpc('increment_estimate_reference_usage', {
-        reference_id: id,
-      })
-    } catch {
-      // 静默失败，不影响主流程
-    }
-  }
 }
 
 /**

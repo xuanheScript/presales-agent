@@ -8,10 +8,15 @@ import {
   withAbortSignal,
 } from '../execution-policy'
 import { createTelemetryConfig } from '@/lib/observability/langfuse'
-import { getReferencesForBreakdown, incrementReferenceUsage } from '@/app/actions/estimate-references'
+import {
+  getReferencesForBreakdownInWorker,
+  incrementReferenceUsageInWorker,
+} from '../estimate-reference-service'
 import type { EstimateReference } from '@/types'
 import type { PresalesState, AgentFunctionModule } from '../state'
 import {
+  ADDITIONAL_WORK_MAX_ITEMS,
+  ADDITIONAL_WORK_MAX_OUTPUT_TOKENS,
   additionalWorkSchema,
   roleCatalogSchema,
   validateAdditionalWork,
@@ -27,146 +32,25 @@ import {
   type FunctionWithStableId,
   type RoleWithStableId,
 } from './breakdown-role-estimation'
-import {
-  chunkRequirement,
-  checkFunctionDiscovery,
-  createFunctionDiscoveryEvidenceLines,
-  evidenceAnchoredFunctionDiscoverySchema,
-  mergeFunctionDiscoveries,
-  resolveEvidenceAnchoredFunctionDiscovery,
-  getSourceContextText,
-  getSourceFocusText,
-  type FunctionDiscoveryEvidenceLine,
-  type RequirementSourceChunk,
-  type ValidatedFunctionDiscovery,
-} from './breakdown-function-discovery'
 
+export const ROLE_CATALOG_MAX_OUTPUT_TOKENS = 8_192
+export const ROLE_EFFORT_BATCH_MAX_OUTPUT_TOKENS = 16_384
 
-function buildFunctionDiscoveryPrompt(
-  source: RequirementSourceChunk,
-  state: PresalesState,
-  existingFunctions: Array<{ moduleName: string; functionName: string }>,
-  evidenceLines: FunctionDiscoveryEvidenceLine[]
-): string {
-  const contextText = getSourceContextText(source)
-  const focusText = getSourceFocusText(source)
-  const evidenceCatalog = evidenceLines
-    .map(({ evidenceId, quote }) => `${evidenceId} | ${quote}`)
-    .join('\n')
-  const existingCatalog = existingFunctions.length > 0
-    ? existingFunctions
-      .map(({ moduleName, functionName }) => `- ${moduleName} | ${functionName}`)
-      .join('\n')
-    : '无，这是第一个需求切片。'
-
-  return `从当前有界需求切片中发现可独立估算的软件功能，并返回结构化结果。
-
-项目描述：${state.projectDescription || '未提供项目描述'}
-来源 ID：${source.sourceId}
-切片序号：${source.ordinal + 1}
-
-仅供理解边界的上一切片上下文（禁止从这里返回功能或引用证据）：
----
-${contextText || '无'}
----
-
-当前必须覆盖的焦点文本：
----
-${focusText}
----
-
-当前焦点的可引用证据目录（必须通过 evidenceId 选择，不要复制或改写原文）：
----
-${evidenceCatalog}
----
-
-此前切片已经采用的功能命名目录：
-${existingCatalog}
-
-规则：
-1. sourceId 必须原样返回 ${source.sourceId}。
-2. 只识别“当前必须覆盖的焦点文本”能够直接支持的功能，不得从上下文或常识补充功能。
-3. 每个功能返回模块名、功能名、简明描述和一个 evidenceId；evidenceId 必须来自可引用证据目录。
-4. 服务端会使用 evidenceId 对应的原文作为证据，不要返回、复制或改写证据文本。
-5. 同一业务功能与既有目录一致时，必须复用已有模块名和功能名；只有焦点文本明确提出新功能时才创建新名称。
-6. 焦点文本有功能时 coverageStatus 返回 functions，并返回 1 到 12 个功能。
-7. 焦点文本只有背景、约束或非功能要求，没有可独立估算的软件功能时，coverageStatus 返回 no_functions 且 functions 返回空数组。
-8. 不要返回角色、角色工时、额外工作或来源之外的功能。`
-}
-
-export async function discoverFunctions(
-  sources: RequirementSourceChunk[],
-  state: PresalesState,
-  signal: AbortSignal,
-  modelGateway: ModelGateway,
-  config?: RunnableConfig
-): Promise<AgentFunctionModule[]> {
-  const discoveries: ValidatedFunctionDiscovery[] = []
-  const existingFunctions: Array<{ moduleName: string; functionName: string }> = []
-
-  for (let index = 0; index < sources.length; index++) {
-    const source = sources[index]
-    const evidenceLines = createFunctionDiscoveryEvidenceLines(source)
-    const result = await generateText({
-      model: modelGateway.model,
-      output: Output.object({ schema: evidenceAnchoredFunctionDiscoverySchema }),
-      maxOutputTokens: 4096,
-      temperature: 0.2,
-      maxRetries: modelGateway.maxRetries,
-      abortSignal: signal,
-      system: '你是专业的软件需求分析师。严格基于当前有界来源切片发现功能，并从服务端证据目录选择证据 ID。',
-      prompt: buildFunctionDiscoveryPrompt(
-        source,
-        state,
-        existingFunctions,
-        evidenceLines
-      ),
-      experimental_telemetry: createTelemetryConfig('workflow-breakdown-function-discovery', {
-        protocolVersion: BREAKDOWN_PROTOCOL_VERSION,
-        projectId: state.projectId,
-        requirementBaselineId: state.requirementBaselineId,
-        executionId: String(config?.configurable?.executionId || 'none'),
-        sourceId: source.sourceId,
-        sourceIndex: String(index + 1),
-        sourceCount: String(sources.length),
-        sourceChars: String(source.text.length),
-        sourceEstimatedTokens: String(source.estimatedTokens),
-        evidenceLineCount: String(evidenceLines.length),
-      }),
-    })
-
-    if (result.finishReason !== 'stop' || !result.output) {
-      throw new Error(`功能发现切片 ${index + 1}/${sources.length} 未完整结束 (${result.finishReason})`)
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let cursor = 0
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor
+      cursor += 1
+      results[index] = await mapper(items[index], index)
     }
-
-    const resolvedOutput = resolveEvidenceAnchoredFunctionDiscovery(
-      evidenceLines,
-      result.output
-    )
-    const validation = checkFunctionDiscovery(source, resolvedOutput)
-    if (!validation.success) {
-      throw new Error(validation.issue.message)
-    }
-    const discovery = validation.discovery
-
-    discoveries.push(discovery)
-    for (const candidate of discovery.functions) {
-      const identity = `${candidate.moduleName.normalize('NFKC').trim()}\0${candidate.functionName.normalize('NFKC').trim()}`
-        .toLocaleLowerCase('zh-CN')
-      const exists = existingFunctions.some((item) => (
-        `${item.moduleName.normalize('NFKC').trim()}\0${item.functionName.normalize('NFKC').trim()}`
-          .toLocaleLowerCase('zh-CN') === identity
-      ))
-      if (!exists) {
-        existingFunctions.push({
-          moduleName: candidate.moduleName,
-          functionName: candidate.functionName,
-        })
-      }
-    }
-  }
-
-  return mergeFunctionDiscoveries(sources, discoveries)
+  }))
+  return results
 }
 
 function formatRoleEffortReferences(references: EstimateReference[]): string {
@@ -229,9 +113,10 @@ async function generateRoleCatalog(
   const result = await generateText({
     model: modelGateway.model,
     output: Output.object({ schema: roleCatalogSchema }),
-    maxOutputTokens: 2048,
+    maxOutputTokens: ROLE_CATALOG_MAX_OUTPUT_TOKENS,
     temperature: 0.2,
     maxRetries: modelGateway.maxRetries,
+    providerOptions: modelGateway.profile.providerOptions,
     abortSignal: signal,
     system: '你是专业的软件项目团队规划专家。只返回当前项目确实需要的角色目录。',
     prompt: `根据项目信息和已发现功能生成有界角色目录。
@@ -283,9 +168,10 @@ async function generateAdditionalWork(
   const result = await generateText({
     model: modelGateway.model,
     output: Output.object({ schema: additionalWorkSchema }),
-    maxOutputTokens: 3072,
+    maxOutputTokens: ADDITIONAL_WORK_MAX_OUTPUT_TOKENS,
     temperature: 0.2,
     maxRetries: modelGateway.maxRetries,
+    providerOptions: modelGateway.profile.providerOptions,
     abortSignal: signal,
     system: '你是专业的软件项目规划专家。识别未包含在功能工时中的项目级额外工作。',
     prompt: `识别当前项目必要的非功能开发和项目级额外工作。
@@ -306,7 +192,7 @@ ${roleCatalog}
 2. days 是整个工作项的总人天，不是每个角色各自的人天。
 3. assignedRoleIds 必须来自角色目录，同一工作项不得重复角色。
 4. 如果没有必要的额外工作，返回空 items 数组。
-5. 最多返回 24 项，单项不超过 120 人天。`,
+5. 最多返回 ${ADDITIONAL_WORK_MAX_ITEMS} 项，单项不超过 120 人天。`,
     experimental_telemetry: createTelemetryConfig('workflow-breakdown-additional-work', {
       protocolVersion: BREAKDOWN_PROTOCOL_VERSION,
       projectId: state.projectId,
@@ -335,40 +221,42 @@ async function estimateRoleEfforts(
   config?: RunnableConfig
 ): Promise<AgentFunctionModule[]> {
   const batches = partitionFunctionBatches(functions)
-  const batchResults = []
+  const batchResults = await mapWithConcurrency(
+    batches,
+    modelGateway.profile.recommendedConcurrency,
+    async (batch, index) => {
+      const result = await generateText({
+        model: modelGateway.model,
+        output: Output.array({
+          name: 'FunctionRoleEffortBatch',
+          description: '当前批次每个功能的角色工时估算',
+          element: roleEffortBatchItemSchema,
+        }),
+        maxOutputTokens: ROLE_EFFORT_BATCH_MAX_OUTPUT_TOKENS,
+        temperature: 0.2,
+        maxRetries: modelGateway.maxRetries,
+        providerOptions: modelGateway.profile.providerOptions,
+        abortSignal: signal,
+        system: '你是专业的软件项目工时评估专家。严格使用输入提供的功能 ID 和角色 ID。',
+        prompt: buildRoleEffortPrompt(batch, roles, references),
+        experimental_telemetry: createTelemetryConfig('workflow-breakdown-role-effort', {
+          protocolVersion: BREAKDOWN_PROTOCOL_VERSION,
+          projectId: state.projectId,
+          requirementBaselineId: state.requirementBaselineId,
+          executionId: String(config?.configurable?.executionId || 'none'),
+          batchIndex: String(index + 1),
+          batchCount: String(batches.length),
+          functionsCount: String(batch.length),
+        }),
+      })
 
-  for (let index = 0; index < batches.length; index++) {
-    const batch = batches[index]
-    const result = await generateText({
-      model: modelGateway.model,
-      output: Output.array({
-        name: 'FunctionRoleEffortBatch',
-        description: '当前批次每个功能的角色工时估算',
-        element: roleEffortBatchItemSchema,
-      }),
-      maxOutputTokens: 4096,
-      temperature: 0.2,
-      maxRetries: modelGateway.maxRetries,
-      abortSignal: signal,
-      system: '你是专业的软件项目工时评估专家。严格使用输入提供的功能 ID 和角色 ID。',
-      prompt: buildRoleEffortPrompt(batch, roles, references),
-      experimental_telemetry: createTelemetryConfig('workflow-breakdown-role-effort', {
-        protocolVersion: BREAKDOWN_PROTOCOL_VERSION,
-        projectId: state.projectId,
-        requirementBaselineId: state.requirementBaselineId,
-        executionId: String(config?.configurable?.executionId || 'none'),
-        batchIndex: String(index + 1),
-        batchCount: String(batches.length),
-        functionsCount: String(batch.length),
-      }),
-    })
+      if (result.finishReason !== 'stop' || !result.output) {
+        throw new Error(`角色工时批次 ${index + 1}/${batches.length} 未完整结束 (${result.finishReason})`)
+      }
 
-    if (result.finishReason !== 'stop' || !result.output) {
-      throw new Error(`角色工时批次 ${index + 1}/${batches.length} 未完整结束 (${result.finishReason})`)
+      return validateRoleEffortBatch(batch, result.output, roles)
     }
-
-    batchResults.push(validateRoleEffortBatch(batch, result.output, roles))
-  }
+  )
 
   return mergeRoleEffortBatches(functions, batchResults)
 }
@@ -383,32 +271,43 @@ export async function breakdownNode(
   config?: RunnableConfig,
   modelGateway: ModelGateway = defaultModelGateway
 ): Promise<Partial<PresalesState>> {
-  // 验证前置条件
-  if (!state.analysis) {
+  // 全文 discovery 已一次生成 analysis 与 functions，本节点只执行后续角色和工时扩展。
+  if (!state.canonicalRequirement.trim()) {
     return {
-      error: '缺少需求分析结果，无法进行功能拆解',
+      error: '需求内容不能为空，无法进行功能拆解',
       currentStep: 'breakdown',
     }
   }
 
   try {
-    const { functions, identifiedRoles, additionalWork, usedReferenceIds } = await withAbortSignal(
+    const {
+      analysis,
+      functions,
+      identifiedRoles,
+      additionalWork,
+      usedReferenceIds,
+    } = await withAbortSignal(
       [getRunnableSignal(config)],
       EXECUTION_POLICY.workflowNodeTimeoutMs,
       async (signal) => {
-        // 参考检索、功能发现及后续调用共享同一个节点级 deadline。
         let references: EstimateReference[] = []
         let usedReferenceIds: string[] = []
 
+        if (!state.prefetchedDiscovery) {
+          throw new Error('执行缺少已完成的全文需求分析结果')
+        }
+        const discovery = state.prefetchedDiscovery
+        const analysis = discovery.analysis
+
         try {
           const queryText = [
-            state.analysis!.projectType,
-            ...(state.analysis!.keyFeatures || []),
+            analysis.projectType,
+            ...(analysis.keyFeatures || []),
           ]
             .filter(Boolean)
             .join(' ')
 
-          references = await getReferencesForBreakdown(queryText, 10, { signal })
+          references = await getReferencesForBreakdownInWorker(queryText, 10, { signal })
 
           if (references.length > 0) {
             usedReferenceIds = references.map((reference) => reference.id)
@@ -426,15 +325,17 @@ export async function breakdownNode(
           console.warn('[Agent] 获取估算参考失败，继续执行:', refError)
         }
 
-        const sources = chunkRequirement(
+        const discoveryState = {
+          ...state,
+          analysis,
+        }
+        const functionsWithIds = assignFunctionIds(
           state.requirementBaselineId,
-          state.canonicalRequirement
+          discovery.functions
         )
-        const modules = await discoverFunctions(sources, state, signal, modelGateway, config)
-        const functionsWithIds = assignFunctionIds(state.requirementBaselineId, modules)
         const { roles: identifiedRoles, rolesWithIds } = await generateRoleCatalog(
           functionsWithIds,
-          state,
+          discoveryState,
           signal,
           modelGateway,
           config
@@ -442,7 +343,7 @@ export async function breakdownNode(
         const additionalWork = await generateAdditionalWork(
           functionsWithIds,
           rolesWithIds,
-          state,
+          discoveryState,
           signal,
           modelGateway,
           config
@@ -458,6 +359,7 @@ export async function breakdownNode(
         )
 
         return {
+          analysis,
           functions: estimatedFunctions,
           identifiedRoles,
           additionalWork,
@@ -483,12 +385,17 @@ export async function breakdownNode(
       totalDays,
     })
 
-    // 记录参考使用计数（fire-and-forget）
+    // 使用计数是 best effort，但必须在节点返回前结束，避免后台任务退出时丢失。
     if (usedReferenceIds.length > 0) {
-      incrementReferenceUsage(usedReferenceIds).catch(() => {})
+      try {
+        await incrementReferenceUsageInWorker(usedReferenceIds)
+      } catch (usageError) {
+        console.warn('[Agent] 更新估算参考使用计数失败，继续执行:', usageError)
+      }
     }
 
     return {
+      analysis,
       functions,
       identifiedRoles,
       additionalWork,

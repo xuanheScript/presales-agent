@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ADDITIONAL_WORK_MAX_OUTPUT_TOKENS,
   additionalWorkSchema,
   roleCatalogSchema,
   validateAdditionalWork,
@@ -17,6 +18,10 @@ function createRoleCatalog() {
 }
 
 describe('Breakdown 结构化目录', () => {
+  it('为最多 24 项额外工作保留足够的结构化输出容量', () => {
+    expect(ADDITIONAL_WORK_MAX_OUTPUT_TOKENS).toBe(16_384)
+  })
+
   it('校验角色目录并生成稳定角色 ID', () => {
     const first = createRoleCatalog()
     const second = createRoleCatalog()

@@ -9,6 +9,7 @@ import {
 } from './breakdown-role-estimation'
 
 export const ADDITIONAL_WORK_MAX_ITEMS = 24
+export const ADDITIONAL_WORK_MAX_OUTPUT_TOKENS = 16_384
 
 export const roleCatalogSchema = z.object({
   roles: z.array(z.object({

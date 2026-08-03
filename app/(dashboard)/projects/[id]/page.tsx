@@ -19,11 +19,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { ApplyRequirementSourceButton } from '@/components/project/apply-requirement-source-button'
 import { ConfirmRequirementButton } from '@/components/project/confirm-requirement-button'
+import { RequirementDocumentDetailDialog } from '@/components/project/requirement-document-detail-dialog'
 import { RequirementSourceActions } from '@/components/project/requirement-source-actions'
 import {
   getRequirementWorkbench,
   type RequirementSourceKind,
   type RequirementSourceStatus,
+  type RequirementWorkbenchSource,
 } from '@/lib/requirements/workbench'
 import { cn } from '@/lib/utils'
 
@@ -248,29 +250,28 @@ async function RequirementWorkbenchContent({ projectId }: { projectId: string })
                     key={`${source.kind}-${source.id}`}
                     className="group flex items-start gap-3 p-4 transition-colors hover:bg-muted/40"
                   >
-                    <Link
-                      href={source.href}
-                      className="contents"
-                    >
-                      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground group-hover:text-foreground">
-                        <Icon className="h-4 w-4" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="font-medium">{source.title}</span>
-                          <Badge variant="outline" className={sourceTone[source.status]}>
-                            {source.statusLabel}
-                          </Badge>
-                        </span>
-                        <span className="mt-1 block line-clamp-2 text-sm text-muted-foreground">
-                          {source.description || '暂无内容摘要'}
-                        </span>
-                        <span className="mt-2 block text-xs text-muted-foreground">
-                          {formatDate(source.updatedAt)}
-                        </span>
-                      </span>
-                    </Link>
-                    {source.canApply ? (
+                    {source.kind === 'document' && source.documentDetail ? (
+                      <RequirementDocumentDetailDialog
+                        projectId={projectId}
+                        requirementId={source.id}
+                        expectedBaselineId={baseline?.id ?? null}
+                        title={source.title}
+                        content={source.documentDetail.content}
+                        status={source.status}
+                        statusLabel={source.statusLabel}
+                        createdAtLabel={formatDate(source.documentDetail.createdAt)}
+                        canApply={source.canApply}
+                        trigger={<SourceSummary source={source} icon={Icon} />}
+                      />
+                    ) : (
+                      <Link
+                        href={source.href}
+                        className="flex min-w-0 flex-1 items-start gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      >
+                        <SourceSummary source={source} icon={Icon} />
+                      </Link>
+                    )}
+                    {source.canApply && source.kind !== 'document' ? (
                       <ApplyRequirementSourceButton
                         projectId={projectId}
                         requirementId={source.id}
@@ -296,6 +297,36 @@ async function RequirementWorkbenchContent({ projectId }: { projectId: string })
         <ProcessStep icon={Sparkles} index="03" title="方案与成本分析" description="绑定正式需求版本生成结果" />
       </div>
     </div>
+  )
+}
+
+function SourceSummary({
+  source,
+  icon: Icon,
+}: {
+  source: RequirementWorkbenchSource
+  icon: typeof FileText
+}) {
+  return (
+    <>
+      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground group-hover:text-foreground">
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center justify-between gap-2">
+          <span className="font-medium">{source.title}</span>
+          <Badge variant="outline" className={sourceTone[source.status]}>
+            {source.statusLabel}
+          </Badge>
+        </span>
+        <span className="mt-1 block line-clamp-2 text-sm text-muted-foreground">
+          {source.description || '暂无内容摘要'}
+        </span>
+        <span className="mt-2 block text-xs text-muted-foreground">
+          {formatDate(source.updatedAt)}
+        </span>
+      </span>
+    </>
   )
 }
 
