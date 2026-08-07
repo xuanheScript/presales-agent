@@ -14,14 +14,42 @@ import {
 } from '@/components/ui/table'
 import { FileText, DollarSign, Clock, AlertTriangle } from 'lucide-react'
 import { getProject } from '@/app/actions/projects'
-import { getLatestRequirement } from '@/app/actions/requirements'
-import { getFunctionModules } from '@/app/actions/functions'
-import { getCostEstimate } from '@/app/actions/costs'
+import { getEstimateVersionSnapshot } from '@/app/actions/estimate-versions'
 import { ExportButtons } from '@/components/project/export-buttons'
+import type { FunctionModule, Requirement } from '@/types'
 
 
 interface ReportPageProps {
   params: Promise<{ id: string }>
+}
+
+function reportRequirement(
+  projectId: string,
+  snapshot: Awaited<ReturnType<typeof getEstimateVersionSnapshot>>
+): Requirement | null {
+  if (!snapshot) return null
+  const sourceRequirement = snapshot.version.input_snapshot.sourceRequirement
+  const sourceRequirementId = typeof sourceRequirement === 'string'
+    ? sourceRequirement
+    : snapshot.version.requirement_baseline_id
+
+  return {
+    id: sourceRequirementId,
+    project_id: projectId,
+    raw_content: '',
+    parsed_content: snapshot.version.parsed_requirement,
+    file_url: null,
+    requirement_type: 'text',
+    source: 'manual',
+    elicitation_session_id: null,
+    created_at: snapshot.version.created_at,
+  }
+}
+
+function reportFunctions(
+  snapshot: Awaited<ReturnType<typeof getEstimateVersionSnapshot>>
+): FunctionModule[] {
+  return snapshot?.functions || []
 }
 
 export default async function ReportPage({ params }: ReportPageProps) {
@@ -49,38 +77,39 @@ export default async function ReportPage({ params }: ReportPageProps) {
 }
 
 async function ExportButtonsWrapper({ projectId }: { projectId: string }) {
-  const [project, requirement, functions, costEstimate] = await Promise.all([
+  const [project, snapshot] = await Promise.all([
     getProject(projectId),
-    getLatestRequirement(projectId),
-    getFunctionModules(projectId),
-    getCostEstimate(projectId),
+    getEstimateVersionSnapshot(projectId, { pointer: 'published' }),
   ])
 
-  if (!project) return null
+  if (!project || !snapshot) return null
 
   return (
     <ExportButtons
       project={project}
-      requirement={requirement}
-      functions={functions}
-      costEstimate={costEstimate}
+      requirement={reportRequirement(projectId, snapshot)}
+      functions={reportFunctions(snapshot)}
+      costEstimate={snapshot.cost}
+      estimateVersionId={snapshot.version.id}
+      estimateRevision={snapshot.version.revision_no}
     />
   )
 }
 
 async function ReportContent({ projectId }: { projectId: string }) {
-  const [project, requirement, functions, costEstimate] = await Promise.all([
+  const [project, snapshot] = await Promise.all([
     getProject(projectId),
-    getLatestRequirement(projectId),
-    getFunctionModules(projectId),
-    getCostEstimate(projectId),
+    getEstimateVersionSnapshot(projectId, { pointer: 'published' }),
   ])
 
   if (!project) {
     notFound()
   }
 
-  const totalHours = functions.reduce((sum, fn) => sum + fn.estimated_hours, 0)
+  const requirement = reportRequirement(projectId, snapshot)
+  const functions = reportFunctions(snapshot)
+  const costEstimate = snapshot?.cost || null
+  const totalHours = functions.reduce((sum, fn) => sum + Number(fn.estimated_hours), 0)
 
   return (
     <div className="space-y-6">
@@ -416,15 +445,30 @@ async function ReportContent({ projectId }: { projectId: string }) {
         </Card>
       )}
 
-      {/* 无数据提示 */}
-      {!costEstimate && functions.length === 0 && (
+      {/* 尚未发布正式版本 */}
+      {!snapshot && (
         <Card>
           <CardContent className="py-12">
             <div className="text-center text-muted-foreground">
               <FileText className="mx-auto h-12 w-12 mb-4 opacity-50" />
-              <p className="font-medium">暂无分析数据</p>
+              <p className="font-medium">尚无已发布估算版本</p>
               <p className="text-sm mt-1">
-                请先在需求输入页面进行 AI 分析
+                请先审核并发布当前最新估算版本，报告和导出不会自动回退到内部工作版本
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 无数据提示 */}
+      {snapshot && !costEstimate && functions.length === 0 && (
+        <Card>
+          <CardContent className="py-12">
+            <div className="text-center text-muted-foreground">
+              <FileText className="mx-auto h-12 w-12 mb-4 opacity-50" />
+              <p className="font-medium">已发布版本没有估算明细</p>
+              <p className="text-sm mt-1">
+                请检查该不可变版本的功能与成本快照
               </p>
             </div>
           </CardContent>

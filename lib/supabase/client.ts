@@ -25,6 +25,10 @@ function getRuntimeConfig() {
   throw new Error('Runtime config not available. Make sure the page is rendered from the server.')
 }
 
+export function getBrowserSupabaseConfig() {
+  return getRuntimeConfig()
+}
+
 export function createClient() {
   const config = getRuntimeConfig()
   return createBrowserClient(config.url, config.anonKey)

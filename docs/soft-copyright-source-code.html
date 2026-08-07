@@ -1,0 +1,5650 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>售前成本估算 Agent 系统 软件著作权源码文档</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 2cm 1.6cm 2cm 1.6cm;
+    }
+    body {
+      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: #111827;
+      line-height: 1.5;
+      font-size: 11pt;
+    }
+    h1 {
+      font-size: 22pt;
+      text-align: center;
+      margin-top: 120px;
+      margin-bottom: 24px;
+    }
+    h2 {
+      font-size: 14pt;
+      margin: 0 0 8px 0;
+    }
+    p {
+      margin: 8px 0;
+    }
+    .cover {
+      page-break-after: always;
+    }
+    .page-break {
+      page-break-before: always;
+    }
+    .meta {
+      color: #4b5563;
+      font-size: 10pt;
+    }
+    .summary {
+      margin-top: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+      font-size: 10pt;
+    }
+    th, td {
+      border: 1px solid #9ca3af;
+      padding: 6px 8px;
+      text-align: left;
+    }
+    th {
+      background: #f3f4f6;
+    }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: "Menlo", "Consolas", monospace;
+      font-size: 8pt;
+      line-height: 1.25;
+      border: 1px solid #d1d5db;
+      background: #f9fafb;
+      padding: 10px;
+      margin-top: 12px;
+    }
+    ul {
+      margin: 8px 0 0 20px;
+    }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <h1>售前成本估算 Agent 系统<br />软件著作权源码文档</h1>
+    <p><strong>软件版本：</strong>V1.0</p>
+    <p><strong>生成时间：</strong>2026-03-20 16:50:54</p>
+    <p><strong>项目说明：</strong>本系统是一个基于 Next.js、TypeScript、Supabase 与 AI Agent 工作流的智能售前支持平台，支持需求录入、文档解析、对话式需求引导、功能点拆解、工时评估、成本测算、功能库管理、Git 仓库解析与估算报告导出。</p>
+    <p><strong>源码总行数：</strong>5365 行</p>
+  </section>
+
+  <section>
+    <h2>一、项目概述</h2>
+    <p>本系统是一个基于 Next.js、TypeScript、Supabase 与 AI Agent 工作流的智能售前支持平台，支持需求录入、文档解析、对话式需求引导、功能点拆解、工时评估、成本测算、功能库管理、Git 仓库解析与估算报告导出。</p>
+    <p class="summary">系统以售前项目评估为业务核心，面向需求分析、功能拆解、工时估算、成本计算、知识沉淀和结果导出等关键环节提供统一的平台能力。</p>
+
+    <h2>二、主要功能模块</h2>
+    <ul>
+      <li>用户登录注册与权限管理</li><li>项目管理与需求录入</li><li>对话式需求引导与 AI 聊天</li><li>LangGraph 多节点售前估算工作流</li><li>功能模块拆解与估算参考库</li><li>快速估算与成本汇总</li><li>Git 仓库扫描与代码功能解析</li><li>报表导出与结果展示</li>
+    </ul>
+
+    <h2>三、源码清单</h2>
+    
+    <table>
+      <thead>
+        <tr>
+          <th>序号</th>
+          <th>源码文件</th>
+          <th>行数</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+            <tr>
+              <td>1</td>
+              <td>app/api/chat/route.ts</td>
+              <td>503</td>
+            </tr>
+            
+            <tr>
+              <td>2</td>
+              <td>app/api/agent/stream/route.ts</td>
+              <td>326</td>
+            </tr>
+            
+            <tr>
+              <td>3</td>
+              <td>app/api/agent/run/route.ts</td>
+              <td>229</td>
+            </tr>
+            
+            <tr>
+              <td>4</td>
+              <td>app/actions/requirements.ts</td>
+              <td>372</td>
+            </tr>
+            
+            <tr>
+              <td>5</td>
+              <td>app/actions/estimate-references.ts</td>
+              <td>367</td>
+            </tr>
+            
+            <tr>
+              <td>6</td>
+              <td>lib/agents/graph.ts</td>
+              <td>223</td>
+            </tr>
+            
+            <tr>
+              <td>7</td>
+              <td>lib/agents/state.ts</td>
+              <td>280</td>
+            </tr>
+            
+            <tr>
+              <td>8</td>
+              <td>lib/agents/nodes/breakdown.ts</td>
+              <td>359</td>
+            </tr>
+            
+            <tr>
+              <td>9</td>
+              <td>lib/ai/chat-tools.ts</td>
+              <td>775</td>
+            </tr>
+            
+            <tr>
+              <td>10</td>
+              <td>lib/git/parser.ts</td>
+              <td>399</td>
+            </tr>
+            
+            <tr>
+              <td>11</td>
+              <td>lib/git/prescan.ts</td>
+              <td>507</td>
+            </tr>
+            
+            <tr>
+              <td>12</td>
+              <td>lib/utils/export.ts</td>
+              <td>350</td>
+            </tr>
+            
+            <tr>
+              <td>13</td>
+              <td>components/quick-estimate/quick-estimate-workspace.tsx</td>
+              <td>209</td>
+            </tr>
+            
+            <tr>
+              <td>14</td>
+              <td>app/(dashboard)/projects/[id]/report/page.tsx</td>
+              <td>466</td>
+            </tr>
+            
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2">合计</td>
+          <td>5365</td>
+        </tr>
+      </tfoot>
+    </table>
+    
+  </section>
+
+  
+            <section class="file-section page-break">
+              <h2>1. app/api/chat/route.ts</h2>
+              <p class="meta">文件类型：源码文件 | 行数：503</p>
+              <pre>import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from &#x27;ai&#x27;
+import { defaultModel } from &#x27;@/lib/ai/config&#x27;
+import { createChatTools } from &#x27;@/lib/ai/chat-tools&#x27;
+import {
+  createElicitationTools,
+  buildElicitationSystemPrompt,
+  convertToParseRequirement,
+  buildRawRequirementFromCollectedInfo,
+} from &#x27;@/lib/ai/elicitation&#x27;
+import { createTelemetryConfig } from &#x27;@/lib/observability/langfuse&#x27;
+import { getProject } from &#x27;@/app/actions/projects&#x27;
+import { getLatestRequirement, updateRequirementParsedContent } from &#x27;@/app/actions/requirements&#x27;
+import { getFunctionModules } from &#x27;@/app/actions/functions&#x27;
+import { getCostEstimate } from &#x27;@/app/actions/costs&#x27;
+import { saveChatMessages } from &#x27;@/app/actions/chat-sessions&#x27;
+import {
+  getOrCreateElicitationSession,
+  getElicitationSession,
+  saveElicitationMessage,
+  advanceElicitationRound,
+  completeElicitationSession,
+} from &#x27;@/app/actions/elicitation-sessions&#x27;
+import type { ChatMode, ElicitationCollectedInfo } from &#x27;@/types&#x27;
+
+export const maxDuration = 120 // 增加超时时间以支持工具调用
+
+interface ChatRequest {
+  messages: UIMessage[]
+  projectId: string
+  sessionId?: string // 会话 ID，用于消息持久化（internal 模式）
+  mode?: ChatMode // 对话模式，默认 internal
+  elicitationSessionId?: string // elicitation 会话 ID
+  userWantsToComplete?: boolean // 用户主动结束引导
+}
+
+interface ElicitationResponseMeta {
+  sessionId: string
+  currentRound: number
+  maxRounds: number
+  collectedInfo: ElicitationCollectedInfo
+  isComplete: boolean
+}
+
+/**
+ * POST /api/chat
+ *
+ * 对话式需求引导 API
+ * 支持两种模式：
+ * - internal: 传统模式，AI 辅助完善已有需求
+ * - elicitation: 苏格拉底式多轮提问，主动收集需求
+ */
+export async function POST(req: Request) {
+  try {
+    const {
+      messages,
+      projectId,
+      sessionId,
+      mode = &#x27;internal&#x27;,
+      elicitationSessionId,
+      userWantsToComplete,
+    }: ChatRequest = await req.json()
+
+    if (!projectId) {
+      return new Response(
+        JSON.stringify({ error: &#x27;缺少项目 ID&#x27; }),
+        { status: 400, headers: { &#x27;Content-Type&#x27;: &#x27;application/json&#x27; } }
+      )
+    }
+
+    // 根据模式选择不同的处理逻辑
+    if (mode === &#x27;elicitation&#x27;) {
+      return handleElicitationMode({
+        messages,
+        projectId,
+        elicitationSessionId,
+        userWantsToComplete,
+      })
+    }
+
+    // 默认使用 internal 模式
+    return handleInternalMode({
+      messages,
+      projectId,
+      sessionId,
+    })
+  } catch (error) {
+    console.error(&#x27;[Chat API] 对话失败:&#x27;, error)
+
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : &#x27;对话失败&#x27; }),
+      { status: 500, headers: { &#x27;Content-Type&#x27;: &#x27;application/json&#x27; } }
+    )
+  }
+}
+
+/**
+ * 处理 Internal 模式（传统需求对话）
+ */
+async function handleInternalMode({
+  messages,
+  projectId,
+  sessionId,
+}: {
+  messages: UIMessage[]
+  projectId: string
+  sessionId?: string
+}) {
+  // 获取项目上下文信息
+  const [project, requirement, functions, costEstimate] = await Promise.all([
+    getProject(projectId),
+    getLatestRequirement(projectId),
+    getFunctionModules(projectId),
+    getCostEstimate(projectId),
+  ])
+
+  if (!project) {
+    return new Response(
+      JSON.stringify({ error: &#x27;项目不存在&#x27; }),
+      { status: 404, headers: { &#x27;Content-Type&#x27;: &#x27;application/json&#x27; } }
+    )
+  }
+
+  // 需要 requirementId 来支持工具调用
+  const requirementId = requirement?.id || &#x27;&#x27;
+
+  // 创建带有上下文的工具集
+  const tools = createChatTools({
+    projectId,
+    requirementId,
+  })
+
+  // 构建系统提示词，包含项目上下文
+  const systemPrompt = buildInternalSystemPrompt(project, requirement, functions, costEstimate)
+
+  // 将 UI 消息转换为模型消息格式
+  const modelMessages = await convertToModelMessages(messages)
+
+  // 使用 AI SDK 进行流式对话，包含工具支持
+  const result = streamText({
+    model: defaultModel,
+    system: systemPrompt,
+    messages: modelMessages,
+    tools,
+    stopWhen: stepCountIs(5), // 允许最多 5 步工具调用
+    experimental_telemetry: createTelemetryConfig(&#x27;chat-internal&#x27;, {
+      projectId,
+      sessionId: sessionId || &#x27;none&#x27;,
+    }),
+  })
+
+  // 确保即使客户端断开也能保存消息
+  if (sessionId) {
+    result.consumeStream()
+  }
+
+  // AI SDK v6 使用 toUIMessageStreamResponse() 与 useChat 配合
+  return result.toUIMessageStreamResponse({
+    originalMessages: messages,
+    onFinish: async ({ messages: finalMessages }) =&gt; {
+      // 如果有 sessionId，保存消息到数据库
+      if (sessionId) {
+        await saveChatMessages(sessionId, finalMessages)
+      }
+    },
+  })
+}
+
+/**
+ * 处理 Elicitation 模式（苏格拉底式需求引导）
+ */
+async function handleElicitationMode({
+  messages,
+  projectId,
+  elicitationSessionId,
+  userWantsToComplete,
+}: {
+  messages: UIMessage[]
+  projectId: string
+  elicitationSessionId?: string
+  userWantsToComplete?: boolean
+}) {
+  const project = await getProject(projectId)
+
+  if (!project) {
+    return new Response(
+      JSON.stringify({ error: &#x27;项目不存在&#x27; }),
+      { status: 404, headers: { &#x27;Content-Type&#x27;: &#x27;application/json&#x27; } }
+    )
+  }
+
+  // 获取或创建 elicitation 会话
+  let session = elicitationSessionId
+    ? await getElicitationSession(elicitationSessionId)
+    : await getOrCreateElicitationSession(projectId)
+
+  if (!session) {
+    return new Response(
+      JSON.stringify({ error: &#x27;无法创建或获取引导会话&#x27; }),
+      { status: 500, headers: { &#x27;Content-Type&#x27;: &#x27;application/json&#x27; } }
+    )
+  }
+
+  // 检查会话是否已完成
+  if (session.status === &#x27;completed&#x27;) {
+    return new Response(
+      JSON.stringify({ error: &#x27;该引导会话已完成&#x27; }),
+      { status: 400, headers: { &#x27;Content-Type&#x27;: &#x27;application/json&#x27; } }
+    )
+  }
+
+  // 检查是否达到轮次上限
+  if (session.current_round &gt;= session.max_rounds) {
+    // 自动完成会话
+    await completeElicitationAndConvert(session.id, projectId)
+    session = await getElicitationSession(session.id)
+
+    return new Response(
+      JSON.stringify({
+        error: &#x27;已达到最大轮次，会话已自动完成&#x27;,
+        elicitation: buildElicitationMeta(session!),
+      }),
+      { status: 400, headers: { &#x27;Content-Type&#x27;: &#x27;application/json&#x27; } }
+    )
+  }
+
+  const collectedInfo = (session.collected_info || {}) as ElicitationCollectedInfo
+
+  // 用户主动结束（新版本不再限制进度，由 AI 判断是否可以完成）
+  if (userWantsToComplete) {
+    await completeElicitationAndConvert(session.id, projectId)
+    session = await getElicitationSession(session.id)
+
+    return new Response(
+      JSON.stringify({
+        message: &#x27;需求引导已完成&#x27;,
+        elicitation: buildElicitationMeta(session!),
+      }),
+      { status: 200, headers: { &#x27;Content-Type&#x27;: &#x27;application/json&#x27; } }
+    )
+  }
+
+  // 获取原始需求文本
+  const requirement = await getLatestRequirement(projectId)
+  const rawRequirement = requirement?.raw_content || undefined
+
+  // 创建 Elicitation 工具集
+  const tools = createElicitationTools({
+    projectId,
+    elicitationSessionId: session.id,
+  })
+
+  // 提取用户初始输入（第一条用户消息）
+  const firstUserMessage = messages.find(m =&gt; m.role === &#x27;user&#x27;)
+  const userInitialInput = firstUserMessage?.parts
+    ?.filter(p =&gt; p.type === &#x27;text&#x27;)
+    .map(p =&gt; (p as { text: string }).text)
+    .join(&#x27;&#x27;) || undefined
+
+  // 构建 Elicitation 系统提示词
+  const systemPrompt = buildElicitationSystemPrompt({
+    collectedInfo,
+    currentRound: session.current_round + 1, // 显示给用户的轮次从1开始
+    maxRounds: session.max_rounds,
+    userInitialInput: typeof userInitialInput === &#x27;string&#x27; ? userInitialInput : undefined,
+    rawRequirement: typeof rawRequirement === &#x27;string&#x27; ? rawRequirement : undefined,
+  })
+
+  // 将 UI 消息转换为模型消息格式
+  const modelMessages = await convertToModelMessages(messages)
+
+  // 使用 AI SDK 进行流式对话
+  const result = streamText({
+    model: defaultModel,
+    system: systemPrompt,
+    messages: modelMessages,
+    tools,
+    stopWhen: stepCountIs(5),
+    experimental_telemetry: createTelemetryConfig(&#x27;chat-elicitation&#x27;, {
+      projectId,
+      sessionId: session.id,
+      round: session.current_round + 1,
+    }),
+  })
+
+  result.consumeStream()
+
+  return result.toUIMessageStreamResponse({
+    originalMessages: messages,
+    onFinish: async ({ messages: finalMessages }) =&gt; {
+      // 保存消息到 elicitation_messages
+      const lastUserMessage = messages[messages.length - 1]
+      const lastAssistantMessage = finalMessages[finalMessages.length - 1]
+
+      if (lastUserMessage?.role === &#x27;user&#x27;) {
+        const userContent = lastUserMessage.parts
+          ?.filter(p =&gt; p.type === &#x27;text&#x27;)
+          .map(p =&gt; (p as { text: string }).text)
+          .join(&#x27;&#x27;) || &#x27;&#x27;
+
+        await saveElicitationMessage(
+          session!.id,
+          session!.current_round + 1,
+          &#x27;user&#x27;,
+          userContent
+        )
+      }
+
+      if (lastAssistantMessage?.role === &#x27;assistant&#x27;) {
+        const content = lastAssistantMessage.parts
+          ?.filter(p =&gt; p.type === &#x27;text&#x27;)
+          .map(p =&gt; (p as { text: string }).text)
+          .join(&#x27;&#x27;) || &#x27;&#x27;
+
+        await saveElicitationMessage(
+          session!.id,
+          session!.current_round + 1,
+          &#x27;assistant&#x27;,
+          content
+        )
+      }
+
+      // 推进到下一轮
+      await advanceElicitationRound(session!.id)
+    },
+    // 添加 elicitation 元数据到响应头
+    headers: {
+      &#x27;X-Elicitation-Session-Id&#x27;: session.id,
+      &#x27;X-Elicitation-Round&#x27;: String(session.current_round + 1),
+    },
+  })
+}
+
+/**
+ * 完成 Elicitation 并转换为 ParsedRequirement
+ */
+async function completeElicitationAndConvert(sessionId: string, projectId: string) {
+  const session = await getElicitationSession(sessionId)
+  if (!session) return
+
+  const collectedInfo = (session.collected_info || {}) as ElicitationCollectedInfo
+
+  // 转换为 ParsedRequirement
+  const parsedRequirement = convertToParseRequirement(collectedInfo)
+
+  // 生成原始需求文本
+  const rawRequirement = buildRawRequirementFromCollectedInfo(collectedInfo)
+
+  // 更新 requirement 表
+  const requirement = await getLatestRequirement(projectId)
+  if (requirement) {
+    await updateRequirementParsedContent(requirement.id, parsedRequirement, rawRequirement)
+  }
+
+  // 完成会话
+  await completeElicitationSession(sessionId)
+}
+
+/**
+ * 构建 Elicitation 响应元数据
+ */
+function buildElicitationMeta(session: NonNullable&lt;Awaited&lt;ReturnType&lt;typeof getElicitationSession&gt;&gt;&gt;): ElicitationResponseMeta {
+  const collectedInfo = (session.collected_info || {}) as ElicitationCollectedInfo
+
+  return {
+    sessionId: session.id,
+    currentRound: session.current_round,
+    maxRounds: session.max_rounds,
+    collectedInfo,
+    isComplete: session.status === &#x27;completed&#x27;,
+  }
+}
+
+/**
+ * 构建 Internal 模式系统提示词
+ */
+function buildInternalSystemPrompt(
+  project: Awaited&lt;ReturnType&lt;typeof getProject&gt;&gt;,
+  requirement: Awaited&lt;ReturnType&lt;typeof getLatestRequirement&gt;&gt;,
+  functions: Awaited&lt;ReturnType&lt;typeof getFunctionModules&gt;&gt;,
+  costEstimate: Awaited&lt;ReturnType&lt;typeof getCostEstimate&gt;&gt;
+): string {
+  let contextInfo = `# 当前项目信息
+
+**项目名称**：${project?.name || &#x27;未命名&#x27;}
+**项目描述**：${project?.description || &#x27;无&#x27;}
+**行业**：${project?.industry || &#x27;未指定&#x27;}
+**状态**：${project?.status || &#x27;draft&#x27;}
+`
+
+  // 添加需求信息
+  if (requirement) {
+    contextInfo += `
+## 需求内容
+${requirement.raw_content || &#x27;无&#x27;}
+`
+
+    if (requirement.parsed_content) {
+      const parsed = requirement.parsed_content
+      contextInfo += `
+## AI 分析结果
+- **项目类型**：${parsed.projectType}
+- **业务目标**：${parsed.businessGoals.join(&#x27;、&#x27;) || &#x27;无&#x27;}
+- **核心功能**：${parsed.keyFeatures.join(&#x27;、&#x27;) || &#x27;无&#x27;}
+- **技术栈**：${parsed.techStack.join(&#x27;、&#x27;) || &#x27;无&#x27;}
+- **潜在风险**：${parsed.risks.join(&#x27;、&#x27;) || &#x27;无&#x27;}
+`
+    }
+  }
+
+  // 添加功能模块信息
+  if (functions &amp;&amp; functions.length &gt; 0) {
+    const totalHours = functions.reduce((sum, f) =&gt; sum + f.estimated_hours, 0)
+    contextInfo += `
+## 功能模块（共 ${functions.length} 个，总工时 ${totalHours} 小时）
+${functions.slice(0, 10).map(f =&gt; `- [ID:${f.id}] ${f.module_name} / ${f.function_name}：${f.estimated_hours}小时（${f.difficulty_level}）`).join(&#x27;\n&#x27;)}
+${functions.length &gt; 10 ? `\n... 还有 ${functions.length - 10} 个功能` : &#x27;&#x27;}
+`
+  }
+
+  // 添加成本信息
+  if (costEstimate) {
+    contextInfo += `
+## 成本估算
+- **人力成本**：¥${costEstimate.labor_cost.toLocaleString()}
+- **服务成本**：¥${costEstimate.service_cost.toLocaleString()}
+- **基础设施成本**：¥${costEstimate.infrastructure_cost.toLocaleString()}
+- **风险缓冲**：${costEstimate.buffer_percentage}%
+- **总成本**：¥${costEstimate.total_cost.toLocaleString()}
+`
+  }
+
+  return `你是一位资深的售前顾问和项目经理。你正在与客户进行需求沟通对话，帮助他们完善项目需求。
+
+${contextInfo}
+
+## 你的职责
+
+1. **需求完善**：主动发现需求中不清晰或遗漏的部分，提出针对性问题
+2. **方案建议**：基于你的经验，给出技术方案和架构建议
+3. **风险提示**：识别潜在风险，给出规避建议
+4. **成本解释**：解释成本构成，回答关于报价的疑问
+5. **信息保存**：当用户确认了新的需求细节、功能点或修改时，使用工具将信息保存到数据库
+
+## 可用工具
+
+你有以下工具可以使用来保存和查询数据：
+
+### 需求管理
+- updateRequirement: 更新需求内容
+- appendRequirement: 追加需求内容（不覆盖原有）
+- updateParsedRequirement: 更新需求分析结果（项目类型、业务目标、技术栈等）
+
+### 功能模块
+- addFunctionModule: 添加单个功能模块
+- addFunctionModulesBatch: 批量添加功能模块
+- updateFunctionHours: 更新功能工时
+- updateFunctionDifficulty: 更新功能难度
+- deleteFunctionModule: 删除功能模块
+- addFromLibrary: 从功能库添加标准功能
+
+### 成本估算
+- updateCostParameters: 更新成本参数（风险缓冲、服务成本等）
+- recalculateCost: 重新计算总成本
+
+### 项目信息
+- updateProjectDescription: 更新项目描述
+- updateProjectIndustry: 更新项目行业
+
+### 查询工具
+- getFunctionModules: 获取功能模块列表
+- getCostSummary: 获取成本汇总
+- searchFunctionLibrary: 搜索功能库
+- getProjectSummary: 获取项目汇总
+- getSystemConfig: 获取系统成本配置（人天成本、风险缓冲比例等），这是成本估算的核心数据源
+
+## 工具使用原则
+
+1. **获得确认后再保存**：在保存信息前，确保用户已明确确认
+2. **成本计算前获取配置**：在进行成本估算或向用户解释成本时，先调用 getSystemConfig 获取最新的人天成本和风险缓冲比例配置
+3. **及时更新成本**：添加或修改功能后，调用 recalculateCost 更新成本
+4. **主动查询**：需要了解当前状态时，使用查询工具获取最新数据
+5. **批量操作**：多个功能一起添加时，使用 addFunctionModulesBatch
+
+## 对话风格
+
+- 专业但友好，用通俗语言解释技术概念
+- 主动提问，引导客户思考未考虑到的细节
+- 给出建议时要有理有据
+- 回答简洁，避免过长
+- 保存信息后，简要告知用户已保存的内容
+
+## 需要主动询问的常见问题
+
+如果信息不足，你可以询问：
+- 用户规模和并发量要求
+- 数据安全和合规要求
+- 与现有系统的集成需求
+- 移动端还是 Web 端优先
+- 上线时间要求
+- 预算范围
+
+请开始对话，帮助客户完善需求。当客户确认了新的信息时，记得使用工具保存。`
+}
+</pre>
+            </section>
+            
+            <section class="file-section page-break">
+              <h2>2. app/api/agent/stream/route.ts</h2>
+              <p class="meta">文件类型：源码文件 | 行数：326</p>
+              <pre>import { createClient } from &#x27;@/lib/supabase/server&#x27;
+import { streamPresalesWorkflow } from &#x27;@/lib/agents/graph&#x27;
+import { getRequirement, updateRequirementAnalysis } from &#x27;@/app/actions/requirements&#x27;
+import { getSystemConfig } from &#x27;@/app/actions/settings&#x27;
+import { DEFAULT_CONFIG } from &#x27;@/constants&#x27;
+import type { ParsedRequirement } from &#x27;@/types&#x27;
+import type { WorkflowSystemConfig } from &#x27;@/lib/agents/state&#x27;
+
+export const maxDuration = 300 // 允许最长 300 秒执行
+
+interface RunRequest {
+  projectId: string
+  requirementId: string
+}
+
+/**
+ * POST /api/agent/stream
+ *
+ * 流式执行售前成本估算 Agent 工作流
+ * 使用 Server-Sent Events (SSE) 推送实时进度
+ */
+export async function POST(req: Request) {
+  try {
+    const { projectId, requirementId }: RunRequest = await req.json()
+
+    // 验证参数
+    if (!projectId || !requirementId) {
+      return new Response(
+        JSON.stringify({ error: &#x27;缺少必要参数&#x27; }),
+        { status: 400, headers: { &#x27;Content-Type&#x27;: &#x27;application/json&#x27; } }
+      )
+    }
+
+    // 获取需求内容
+    const requirement = await getRequirement(requirementId)
+    if (!requirement) {
+      return new Response(
+        JSON.stringify({ error: &#x27;需求不存在或无权限访问&#x27; }),
+        { status: 404, headers: { &#x27;Content-Type&#x27;: &#x27;application/json&#x27; } }
+      )
+    }
+
+    // 验证需求内容不为空
+    if (!requirement.raw_content || requirement.raw_content.trim() === &#x27;&#x27;) {
+      return new Response(
+        JSON.stringify({ error: &#x27;需求内容为空&#x27; }),
+        { status: 400, headers: { &#x27;Content-Type&#x27;: &#x27;application/json&#x27; } }
+      )
+    }
+
+    // 更新项目状态为分析中
+    const supabase = await createClient()
+    await supabase
+      .from(&#x27;projects&#x27;)
+      .update({ status: &#x27;analyzing&#x27; })
+      .eq(&#x27;id&#x27;, projectId)
+
+    // 获取系统配置
+    const dbConfig = await getSystemConfig()
+    const systemConfig: WorkflowSystemConfig = {
+      laborCostPerDay: dbConfig?.default_labor_cost_per_day || DEFAULT_CONFIG.LABOR_COST_PER_DAY,
+      riskBufferPercentage: dbConfig?.default_risk_buffer_percentage || DEFAULT_CONFIG.RISK_BUFFER_PERCENTAGE,
+      workingHoursPerDay: DEFAULT_CONFIG.WORKING_HOURS_PER_DAY,
+    }
+
+    // 创建 SSE 流
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        const sendEvent = (event: string, data: unknown) =&gt; {
+          controller.enqueue(
+            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          )
+        }
+
+        try {
+          let lastResult: {
+            analysis?: unknown
+            functions?: unknown[]
+            identifiedRoles?: unknown[]
+            additionalWork?: unknown[]
+            estimation?: unknown
+            cost?: unknown
+          } = {}
+
+          // 流式执行工作流
+          for await (const update of streamPresalesWorkflow(
+            projectId,
+            requirementId,
+            requirement.raw_content,
+            &#x27;&#x27;, // projectDescription
+            systemConfig
+          )) {
+            console.log(&#x27;[Stream] 步骤更新:&#x27;, update.step)
+
+            // 发送进度事件
+            sendEvent(&#x27;progress&#x27;, {
+              step: update.step,
+              isComplete: update.state.isComplete,
+              error: update.state.error,
+            })
+
+            // 保存最新状态
+            if (update.state.analysis) lastResult.analysis = update.state.analysis
+            if (update.state.functions) lastResult.functions = update.state.functions
+            if (update.state.identifiedRoles) lastResult.identifiedRoles = update.state.identifiedRoles
+            if (update.state.additionalWork) lastResult.additionalWork = update.state.additionalWork
+            if (update.state.estimation) lastResult.estimation = update.state.estimation
+            if (update.state.cost) lastResult.cost = update.state.cost
+
+            // 如果有错误，终止
+            if (update.state.error) {
+              sendEvent(&#x27;error&#x27;, { error: update.state.error })
+
+              // 回滚项目状态
+              await supabase
+                .from(&#x27;projects&#x27;)
+                .update({ status: &#x27;draft&#x27; })
+                .eq(&#x27;id&#x27;, projectId)
+
+              controller.close()
+              return
+            }
+          }
+
+          // 保存结果到数据库
+          if (lastResult.analysis) {
+            const analysis = lastResult.analysis as {
+              projectType?: string
+              businessGoals?: string[]
+              keyFeatures?: string[]
+              techStack?: string[]
+              nonFunctionalRequirements?: {
+                performance?: string
+                security?: string
+                scalability?: string
+              }
+              risks?: string[]
+            }
+
+            const parsedContent: ParsedRequirement = {
+              projectType: analysis.projectType || &#x27;未知类型&#x27;,
+              businessGoals: analysis.businessGoals || [],
+              keyFeatures: analysis.keyFeatures || [],
+              techStack: analysis.techStack || [],
+              nonFunctionalRequirements: analysis.nonFunctionalRequirements || {},
+              risks: analysis.risks || [],
+            }
+
+            await updateRequirementAnalysis(requirementId, parsedContent)
+          }
+
+          // 保存功能模块（新版本：包含按角色评估的工时）
+          if (lastResult.functions &amp;&amp; (lastResult.functions as unknown[]).length &gt; 0) {
+            await supabase
+              .from(&#x27;function_modules&#x27;)
+              .delete()
+              .eq(&#x27;project_id&#x27;, projectId)
+
+            const functionModules = (lastResult.functions as Array&lt;{
+              moduleName: string
+              functionName: string
+              description: string
+              difficultyLevel: string
+              roleEstimates: Array&lt;{ role: string; days: number; reason?: string }&gt;
+              dependencies?: string[]
+            }&gt;).map((fn) =&gt; ({
+              project_id: projectId,
+              module_name: fn.moduleName,
+              function_name: fn.functionName,
+              description: fn.description,
+              difficulty_level: fn.difficultyLevel,
+              // 计算总工时（所有角色工时之和，转换为小时）
+              estimated_hours: fn.roleEstimates.reduce((sum, r) =&gt; sum + r.days * 8, 0),
+              dependencies: fn.dependencies || null,
+              // 新增：角色工时详情
+              role_estimates: fn.roleEstimates,
+            }))
+
+            await supabase.from(&#x27;function_modules&#x27;).insert(functionModules)
+          }
+
+          // 保存识别的项目角色
+          if (lastResult.identifiedRoles &amp;&amp; (lastResult.identifiedRoles as unknown[]).length &gt; 0) {
+            await supabase
+              .from(&#x27;project_roles&#x27;)
+              .delete()
+              .eq(&#x27;project_id&#x27;, projectId)
+
+            // 从 estimation.roleSummary 获取各角色的汇总工时
+            const estimation = lastResult.estimation as {
+              roleSummary?: Array&lt;{ role: string; totalDays: number }&gt;
+            } | undefined
+            const roleSummaryMap = new Map(
+              estimation?.roleSummary?.map((r) =&gt; [r.role, r.totalDays]) || []
+            )
+
+            const projectRoles = (lastResult.identifiedRoles as Array&lt;{
+              role: string
+              responsibility: string
+              headcount: number
+            }&gt;).map((role) =&gt; ({
+              project_id: projectId,
+              role_name: role.role,
+              responsibility: role.responsibility,
+              headcount: role.headcount,
+              total_days: roleSummaryMap.get(role.role) || 0,
+            }))
+
+            await supabase.from(&#x27;project_roles&#x27;).insert(projectRoles)
+          }
+
+          // 保存额外工作项
+          if (lastResult.additionalWork &amp;&amp; (lastResult.additionalWork as unknown[]).length &gt; 0) {
+            await supabase
+              .from(&#x27;additional_work_items&#x27;)
+              .delete()
+              .eq(&#x27;project_id&#x27;, projectId)
+
+            const additionalWorkItems = (lastResult.additionalWork as Array&lt;{
+              workItem: string
+              days: number
+              assignedRoles: string[]
+            }&gt;).map((work) =&gt; ({
+              project_id: projectId,
+              work_item: work.workItem,
+              days: work.days,
+              assigned_roles: work.assignedRoles,
+            }))
+
+            await supabase.from(&#x27;additional_work_items&#x27;).insert(additionalWorkItems)
+          }
+
+          // 保存成本估算（新版本：包含按角色汇总的成本）
+          if (lastResult.cost) {
+            const cost = lastResult.cost as {
+              laborCost: number
+              serviceCost: number
+              infrastructureCost: number
+              bufferCoefficient: number
+              totalCost: number
+              baseDays: number
+              bufferedDays: number
+              roleBreakdown?: unknown
+              additionalWorkBreakdown?: unknown
+              thirdPartyServices?: unknown
+            }
+
+            await supabase
+              .from(&#x27;cost_estimates&#x27;)
+              .delete()
+              .eq(&#x27;project_id&#x27;, projectId)
+
+            await supabase.from(&#x27;cost_estimates&#x27;).insert({
+              project_id: projectId,
+              labor_cost: cost.laborCost,
+              service_cost: cost.serviceCost,
+              infrastructure_cost: cost.infrastructureCost,
+              // 使用缓冲系数转换为百分比存储（例如 1.3 -&gt; 30%）
+              buffer_percentage: (cost.bufferCoefficient - 1) * 100,
+              total_cost: cost.totalCost,
+              // 新字段
+              base_days: cost.baseDays,
+              buffered_days: cost.bufferedDays,
+              buffer_coefficient: cost.bufferCoefficient,
+              // breakdown 包含角色明细（使用 camelCase 与前端类型一致）
+              breakdown: {
+                roleBreakdown: cost.roleBreakdown,
+                additionalWorkBreakdown: cost.additionalWorkBreakdown,
+                thirdPartyServices: cost.thirdPartyServices,
+              },
+            })
+          }
+
+          // 更新项目状态为已完成
+          await supabase
+            .from(&#x27;projects&#x27;)
+            .update({ status: &#x27;completed&#x27; })
+            .eq(&#x27;id&#x27;, projectId)
+
+          // 发送完成事件
+          sendEvent(&#x27;complete&#x27;, {
+            success: true,
+            data: {
+              analysis: lastResult.analysis,
+              functions: lastResult.functions,
+              estimation: lastResult.estimation,
+              cost: lastResult.cost,
+            },
+          })
+
+          controller.close()
+        } catch (error) {
+          console.error(&#x27;[Stream] 工作流执行失败:&#x27;, error)
+
+          sendEvent(&#x27;error&#x27;, {
+            error: error instanceof Error ? error.message : &#x27;工作流执行失败&#x27;,
+          })
+
+          // 回滚项目状态
+          await supabase
+            .from(&#x27;projects&#x27;)
+            .update({ status: &#x27;draft&#x27; })
+            .eq(&#x27;id&#x27;, projectId)
+
+          controller.close()
+        }
+      },
+    })
+
+    return new Response(stream, {
+      headers: {
+        &#x27;Content-Type&#x27;: &#x27;text/event-stream&#x27;,
+        &#x27;Cache-Control&#x27;: &#x27;no-cache&#x27;,
+        Connection: &#x27;keep-alive&#x27;,
+      },
+    })
+  } catch (error) {
+    console.error(&#x27;[API] Agent 流式执行失败:&#x27;, error)
+
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : &#x27;服务器内部错误&#x27; }),
+      { status: 500, headers: { &#x27;Content-Type&#x27;: &#x27;application/json&#x27; } }
+    )
+  }
+}
+</pre>
+            </section>
+            
+            <section class="file-section page-break">
+              <h2>3. app/api/agent/run/route.ts</h2>
+              <p class="meta">文件类型：源码文件 | 行数：229</p>
+              <pre>import { NextResponse } from &#x27;next/server&#x27;
+import { createClient } from &#x27;@/lib/supabase/server&#x27;
+import { runPresalesWorkflow } from &#x27;@/lib/agents/graph&#x27;
+import { getRequirement, updateRequirementAnalysis } from &#x27;@/app/actions/requirements&#x27;
+import { getSystemConfig } from &#x27;@/app/actions/settings&#x27;
+import { DEFAULT_CONFIG } from &#x27;@/constants&#x27;
+import type { ParsedRequirement } from &#x27;@/types&#x27;
+import type { WorkflowSystemConfig } from &#x27;@/lib/agents/state&#x27;
+
+export const maxDuration = 300 // 允许最长 300 秒执行
+
+interface RunRequest {
+  projectId: string
+  requirementId: string
+}
+
+/**
+ * POST /api/agent/run
+ *
+ * 执行售前成本估算 Agent 工作流
+ */
+export async function POST(req: Request) {
+  try {
+    const { projectId, requirementId }: RunRequest = await req.json()
+
+    // 验证参数
+    if (!projectId || !requirementId) {
+      return NextResponse.json(
+        { error: &#x27;缺少必要参数&#x27; },
+        { status: 400 }
+      )
+    }
+
+    // 获取需求内容
+    const requirement = await getRequirement(requirementId)
+    if (!requirement) {
+      return NextResponse.json(
+        { error: &#x27;需求不存在或无权限访问&#x27; },
+        { status: 404 }
+      )
+    }
+
+    // 验证需求内容不为空
+    if (!requirement.raw_content || requirement.raw_content.trim() === &#x27;&#x27;) {
+      return NextResponse.json(
+        { error: &#x27;需求内容为空&#x27; },
+        { status: 400 }
+      )
+    }
+
+    // 获取项目信息（包含项目描述）
+    const supabase = await createClient()
+    const { data: project } = await supabase
+      .from(&#x27;projects&#x27;)
+      .select(&#x27;description&#x27;)
+      .eq(&#x27;id&#x27;, projectId)
+      .single()
+
+    // 获取系统配置
+    const dbConfig = await getSystemConfig()
+    const systemConfig: WorkflowSystemConfig = {
+      laborCostPerDay: dbConfig?.default_labor_cost_per_day || DEFAULT_CONFIG.LABOR_COST_PER_DAY,
+      riskBufferPercentage: dbConfig?.default_risk_buffer_percentage || DEFAULT_CONFIG.RISK_BUFFER_PERCENTAGE,
+      workingHoursPerDay: DEFAULT_CONFIG.WORKING_HOURS_PER_DAY,
+    }
+
+    // 更新项目状态为分析中
+    await supabase
+      .from(&#x27;projects&#x27;)
+      .update({ status: &#x27;analyzing&#x27; })
+      .eq(&#x27;id&#x27;, projectId)
+
+    // 执行工作流
+    const result = await runPresalesWorkflow(
+      projectId,
+      requirementId,
+      requirement.raw_content,
+      project?.description || &#x27;&#x27;,
+      systemConfig
+    )
+
+    // 如果工作流执行失败
+    if (!result.success || result.error) {
+      // 回滚项目状态
+      await supabase
+        .from(&#x27;projects&#x27;)
+        .update({ status: &#x27;draft&#x27; })
+        .eq(&#x27;id&#x27;, projectId)
+
+      return NextResponse.json(
+        { error: result.error || &#x27;工作流执行失败&#x27; },
+        { status: 500 }
+      )
+    }
+
+    // 保存分析结果到数据库
+    if (result.analysis) {
+      // 转换为 ParsedRequirement 格式
+      const parsedContent: ParsedRequirement = {
+        projectType: result.analysis.projectType,
+        businessGoals: result.analysis.businessGoals,
+        keyFeatures: result.analysis.keyFeatures,
+        techStack: result.analysis.techStack,
+        nonFunctionalRequirements: result.analysis.nonFunctionalRequirements,
+        risks: result.analysis.risks,
+      }
+
+      await updateRequirementAnalysis(requirementId, parsedContent)
+    }
+
+    // 保存功能模块
+    if (result.functions &amp;&amp; result.functions.length &gt; 0) {
+      // 先删除旧的功能模块
+      await supabase
+        .from(&#x27;function_modules&#x27;)
+        .delete()
+        .eq(&#x27;project_id&#x27;, projectId)
+
+      // 插入新的功能模块（新版本：包含按角色评估的工时）
+      const functionModules = result.functions.map((fn) =&gt; ({
+        project_id: projectId,
+        module_name: fn.moduleName,
+        function_name: fn.functionName,
+        description: fn.description,
+        difficulty_level: fn.difficultyLevel,
+        // 计算总工时（所有角色工时之和）
+        estimated_hours: fn.roleEstimates.reduce((sum, r) =&gt; sum + r.days * 8, 0),
+        // 将角色工时详情存入 dependencies 字段（临时方案，后续需要更新数据库 schema）
+        dependencies: fn.dependencies || null,
+        // 新增：角色工时详情（需要数据库添加 role_estimates JSONB 字段）
+        role_estimates: fn.roleEstimates,
+      }))
+
+      await supabase.from(&#x27;function_modules&#x27;).insert(functionModules)
+    }
+
+    // 保存识别的项目角色
+    if (result.identifiedRoles &amp;&amp; result.identifiedRoles.length &gt; 0) {
+      // 先删除旧的角色
+      await supabase
+        .from(&#x27;project_roles&#x27;)
+        .delete()
+        .eq(&#x27;project_id&#x27;, projectId)
+
+      // 从 estimation.roleSummary 获取各角色的汇总工时
+      const roleSummaryMap = new Map(
+        result.estimation?.roleSummary?.map((r) =&gt; [r.role, r.totalDays]) || []
+      )
+
+      // 插入新的角色
+      const projectRoles = result.identifiedRoles.map((role) =&gt; ({
+        project_id: projectId,
+        role_name: role.role,
+        responsibility: role.responsibility,
+        headcount: role.headcount,
+        total_days: roleSummaryMap.get(role.role) || 0,
+      }))
+
+      await supabase.from(&#x27;project_roles&#x27;).insert(projectRoles)
+    }
+
+    // 保存额外工作项
+    if (result.additionalWork &amp;&amp; result.additionalWork.length &gt; 0) {
+      // 先删除旧的额外工作项
+      await supabase
+        .from(&#x27;additional_work_items&#x27;)
+        .delete()
+        .eq(&#x27;project_id&#x27;, projectId)
+
+      // 插入新的额外工作项
+      const additionalWorkItems = result.additionalWork.map((work) =&gt; ({
+        project_id: projectId,
+        work_item: work.workItem,
+        days: work.days,
+        assigned_roles: work.assignedRoles,
+      }))
+
+      await supabase.from(&#x27;additional_work_items&#x27;).insert(additionalWorkItems)
+    }
+
+    // 保存成本估算（新版本：包含按角色汇总的成本）
+    if (result.cost) {
+      // 先删除旧的成本估算
+      await supabase
+        .from(&#x27;cost_estimates&#x27;)
+        .delete()
+        .eq(&#x27;project_id&#x27;, projectId)
+
+      // 插入新的成本估算
+      await supabase.from(&#x27;cost_estimates&#x27;).insert({
+        project_id: projectId,
+        labor_cost: result.cost.laborCost,
+        service_cost: result.cost.serviceCost,
+        infrastructure_cost: result.cost.infrastructureCost,
+        // 使用缓冲系数转换为百分比存储（例如 1.3 -&gt; 30%）
+        buffer_percentage: (result.cost.bufferCoefficient - 1) * 100,
+        total_cost: result.cost.totalCost,
+        // 新字段
+        base_days: result.cost.baseDays,
+        buffered_days: result.cost.bufferedDays,
+        buffer_coefficient: result.cost.bufferCoefficient,
+        // breakdown 包含角色明细
+        breakdown: {
+          role_breakdown: result.cost.roleBreakdown,
+          additional_work_breakdown: result.cost.additionalWorkBreakdown,
+          third_party_services: result.cost.thirdPartyServices,
+        },
+      })
+    }
+
+    // 更新项目状态为已完成
+    await supabase
+      .from(&#x27;projects&#x27;)
+      .update({ status: &#x27;completed&#x27; })
+      .eq(&#x27;id&#x27;, projectId)
+
+    return NextResponse.json({
+      success: true,
+      data: result,
+    })
+  } catch (error) {
+    console.error(&#x27;[API] Agent 执行失败:&#x27;, error)
+
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : &#x27;服务器内部错误&#x27; },
+      { status: 500 }
+    )
+  }
+}
+</pre>
+            </section>
+            
+            <section class="file-section page-break">
+              <h2>4. app/actions/requirements.ts</h2>
+              <p class="meta">文件类型：源码文件 | 行数：372</p>
+              <pre>&#x27;use server&#x27;
+
+import { createClient } from &#x27;@/lib/supabase/server&#x27;
+import { revalidatePath } from &#x27;next/cache&#x27;
+import type { Requirement, ParsedRequirement, RequirementType } from &#x27;@/types&#x27;
+
+export interface RequirementActionResult {
+  error?: string
+  success?: boolean
+  data?: Requirement
+}
+
+// 获取项目的需求列表
+export async function getRequirements(projectId: string): Promise&lt;Requirement[]&gt; {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return []
+  }
+
+  // 先验证项目属于当前用户
+  const { data: project } = await supabase
+    .from(&#x27;projects&#x27;)
+    .select(&#x27;id&#x27;)
+    .eq(&#x27;id&#x27;, projectId)
+    .eq(&#x27;created_by&#x27;, user.id)
+    .single()
+
+  if (!project) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from(&#x27;requirements&#x27;)
+    .select(&#x27;*&#x27;)
+    .eq(&#x27;project_id&#x27;, projectId)
+    .order(&#x27;created_at&#x27;, { ascending: false })
+
+  if (error) {
+    console.error(&#x27;获取需求列表失败:&#x27;, error)
+    return []
+  }
+
+  return data || []
+}
+
+// 获取单个需求
+export async function getRequirement(id: string): Promise&lt;Requirement | null&gt; {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from(&#x27;requirements&#x27;)
+    .select(`
+      *,
+      projects!inner(created_by)
+    `)
+    .eq(&#x27;id&#x27;, id)
+    .eq(&#x27;projects.created_by&#x27;, user.id)
+    .single()
+
+  if (error) {
+    console.error(&#x27;获取需求详情失败:&#x27;, error)
+    return null
+  }
+
+  return data
+}
+
+// 创建需求
+export async function createRequirement(
+  projectId: string,
+  rawContent: string,
+  requirementType: RequirementType = &#x27;text&#x27;,
+  fileUrl?: string
+): Promise&lt;RequirementActionResult&gt; {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: &#x27;请先登录&#x27; }
+  }
+
+  // 验证项目属于当前用户
+  const { data: project } = await supabase
+    .from(&#x27;projects&#x27;)
+    .select(&#x27;id&#x27;)
+    .eq(&#x27;id&#x27;, projectId)
+    .eq(&#x27;created_by&#x27;, user.id)
+    .single()
+
+  if (!project) {
+    return { error: &#x27;项目不存在或无权限&#x27; }
+  }
+
+  if (!rawContent || rawContent.trim() === &#x27;&#x27;) {
+    return { error: &#x27;请输入需求内容&#x27; }
+  }
+
+  const { data, error } = await supabase
+    .from(&#x27;requirements&#x27;)
+    .insert({
+      project_id: projectId,
+      raw_content: rawContent.trim(),
+      requirement_type: requirementType,
+      file_url: fileUrl || null,
+    })
+    .select()
+    .single()
+
+  if (error) {
+    console.error(&#x27;创建需求失败:&#x27;, error)
+    return { error: &#x27;创建需求失败，请重试&#x27; }
+  }
+
+  revalidatePath(`/projects/${projectId}`)
+  return { success: true, data }
+}
+
+// 更新需求
+export async function updateRequirement(
+  id: string,
+  rawContent: string
+): Promise&lt;RequirementActionResult&gt; {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: &#x27;请先登录&#x27; }
+  }
+
+  // 获取需求及其关联的项目
+  const { data: requirement, error: fetchError } = await supabase
+    .from(&#x27;requirements&#x27;)
+    .select(`
+      project_id,
+      projects!inner(created_by)
+    `)
+    .eq(&#x27;id&#x27;, id)
+    .eq(&#x27;projects.created_by&#x27;, user.id)
+    .maybeSingle()
+
+  if (fetchError) {
+    console.error(&#x27;查询需求失败:&#x27;, fetchError)
+    return { error: &#x27;查询需求失败，请重试&#x27; }
+  }
+
+  if (!requirement) {
+    return { error: &#x27;需求不存在或无权限&#x27; }
+  }
+
+  const { data, error } = await supabase
+    .from(&#x27;requirements&#x27;)
+    .update({
+      raw_content: rawContent.trim(),
+    })
+    .eq(&#x27;id&#x27;, id)
+    .select()
+    .maybeSingle()
+
+  if (error) {
+    console.error(&#x27;更新需求失败:&#x27;, error)
+    return { error: &#x27;更新需求失败，请重试&#x27; }
+  }
+
+  if (!data) {
+    console.error(&#x27;更新需求失败: 未找到匹配的记录，可能是 RLS 策略阻止了更新&#x27;)
+    return { error: &#x27;更新需求失败，请检查权限&#x27; }
+  }
+
+  revalidatePath(`/projects/${requirement.project_id}`)
+  return { success: true, data }
+}
+
+// 更新需求的解析结果
+export async function updateRequirementAnalysis(
+  id: string,
+  parsedContent: ParsedRequirement
+): Promise&lt;RequirementActionResult&gt; {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: &#x27;请先登录&#x27; }
+  }
+
+  const { data: requirement, error: fetchError } = await supabase
+    .from(&#x27;requirements&#x27;)
+    .select(`
+      project_id,
+      projects!inner(created_by)
+    `)
+    .eq(&#x27;id&#x27;, id)
+    .eq(&#x27;projects.created_by&#x27;, user.id)
+    .maybeSingle()
+
+  if (fetchError) {
+    console.error(&#x27;查询需求失败:&#x27;, fetchError)
+    return { error: &#x27;查询需求失败，请重试&#x27; }
+  }
+
+  if (!requirement) {
+    return { error: &#x27;需求不存在或无权限&#x27; }
+  }
+
+  const { data, error } = await supabase
+    .from(&#x27;requirements&#x27;)
+    .update({
+      parsed_content: parsedContent,
+    })
+    .eq(&#x27;id&#x27;, id)
+    .select()
+    .maybeSingle()
+
+  if (error) {
+    console.error(&#x27;更新需求分析结果失败:&#x27;, error)
+    return { error: &#x27;更新需求分析结果失败，请重试&#x27; }
+  }
+
+  if (!data) {
+    console.error(&#x27;更新需求分析结果失败: 未找到匹配的记录，可能是 RLS 策略阻止了更新&#x27;)
+    return { error: &#x27;更新需求分析结果失败，请检查权限&#x27; }
+  }
+
+  revalidatePath(`/projects/${requirement.project_id}`)
+  return { success: true, data }
+}
+
+// 删除需求
+export async function deleteRequirement(id: string): Promise&lt;RequirementActionResult&gt; {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: &#x27;请先登录&#x27; }
+  }
+
+  const { data: requirement, error: fetchError } = await supabase
+    .from(&#x27;requirements&#x27;)
+    .select(`
+      project_id,
+      projects!inner(created_by)
+    `)
+    .eq(&#x27;id&#x27;, id)
+    .eq(&#x27;projects.created_by&#x27;, user.id)
+    .maybeSingle()
+
+  if (fetchError) {
+    console.error(&#x27;查询需求失败:&#x27;, fetchError)
+    return { error: &#x27;查询需求失败，请重试&#x27; }
+  }
+
+  if (!requirement) {
+    return { error: &#x27;需求不存在或无权限&#x27; }
+  }
+
+  const { error } = await supabase
+    .from(&#x27;requirements&#x27;)
+    .delete()
+    .eq(&#x27;id&#x27;, id)
+
+  if (error) {
+    console.error(&#x27;删除需求失败:&#x27;, error)
+    return { error: &#x27;删除需求失败，请重试&#x27; }
+  }
+
+  revalidatePath(`/projects/${requirement.project_id}`)
+  return { success: true }
+}
+
+// 更新需求的解析结果和原始内容（用于 elicitation 完成后）
+export async function updateRequirementParsedContent(
+  id: string,
+  parsedContent: ParsedRequirement,
+  rawContent?: string
+): Promise&lt;RequirementActionResult&gt; {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: &#x27;请先登录&#x27; }
+  }
+
+  const { data: requirement, error: fetchError } = await supabase
+    .from(&#x27;requirements&#x27;)
+    .select(`
+      project_id,
+      projects!inner(created_by)
+    `)
+    .eq(&#x27;id&#x27;, id)
+    .eq(&#x27;projects.created_by&#x27;, user.id)
+    .maybeSingle()
+
+  if (fetchError) {
+    console.error(&#x27;查询需求失败:&#x27;, fetchError)
+    return { error: &#x27;查询需求失败，请重试&#x27; }
+  }
+
+  if (!requirement) {
+    return { error: &#x27;需求不存在或无权限&#x27; }
+  }
+
+  const updateData: { parsed_content: ParsedRequirement; raw_content?: string } = {
+    parsed_content: parsedContent,
+  }
+
+  if (rawContent) {
+    updateData.raw_content = rawContent
+  }
+
+  const { data, error } = await supabase
+    .from(&#x27;requirements&#x27;)
+    .update(updateData)
+    .eq(&#x27;id&#x27;, id)
+    .select()
+    .maybeSingle()
+
+  if (error) {
+    console.error(&#x27;更新需求解析结果失败:&#x27;, error)
+    return { error: &#x27;更新需求解析结果失败，请重试&#x27; }
+  }
+
+  if (!data) {
+    console.error(&#x27;更新需求解析结果失败: 未找到匹配的记录&#x27;)
+    return { error: &#x27;更新需求解析结果失败，请检查权限&#x27; }
+  }
+
+  revalidatePath(`/projects/${requirement.project_id}`)
+  return { success: true, data }
+}
+
+// 获取项目的最新需求
+export async function getLatestRequirement(projectId: string): Promise&lt;Requirement | null&gt; {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return null
+  }
+
+  // 验证项目属于当前用户
+  const { data: project } = await supabase
+    .from(&#x27;projects&#x27;)
+    .select(&#x27;id&#x27;)
+    .eq(&#x27;id&#x27;, projectId)
+    .eq(&#x27;created_by&#x27;, user.id)
+    .single()
+
+  if (!project) {
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from(&#x27;requirements&#x27;)
+    .select(&#x27;*&#x27;)
+    .eq(&#x27;project_id&#x27;, projectId)
+    .order(&#x27;created_at&#x27;, { ascending: false })
+    .limit(1)
+    .single()
+
+  if (error) {
+    // 可能是没有需求，不是真正的错误
+    return null
+  }
+
+  return data
+}
+</pre>
+            </section>
+            
+            <section class="file-section page-break">
+              <h2>5. app/actions/estimate-references.ts</h2>
+              <p class="meta">文件类型：源码文件 | 行数：367</p>
+              <pre>&#x27;use server&#x27;
+
+import { createClient } from &#x27;@/lib/supabase/server&#x27;
+import { revalidatePath } from &#x27;next/cache&#x27;
+import {
+  generateEmbedding,
+  generateEmbeddings,
+  buildEmbeddingText,
+} from &#x27;@/lib/ai/embedding&#x27;
+import type { EstimateReference } from &#x27;@/types&#x27;
+
+/**
+ * 获取估算参考列表（支持筛选）
+ */
+export async function getEstimateReferences(options?: {
+  projectType?: string
+  category?: string
+  search?: string
+  limit?: number
+}): Promise&lt;EstimateReference[]&gt; {
+  const supabase = await createClient()
+
+  let query = supabase
+    .from(&#x27;estimate_references&#x27;)
+    .select(&#x27;*&#x27;)
+    .order(&#x27;usage_count&#x27;, { ascending: false })
+    .order(&#x27;created_at&#x27;, { ascending: false })
+
+  if (options?.projectType) {
+    query = query.eq(&#x27;project_type&#x27;, options.projectType)
+  }
+
+  if (options?.category) {
+    query = query.eq(&#x27;category&#x27;, options.category)
+  }
+
+  if (options?.search) {
+    query = query.or(
+      `function_name.ilike.%${options.search}%,module_name.ilike.%${options.search}%,description.ilike.%${options.search}%`
+    )
+  }
+
+  if (options?.limit) {
+    query = query.limit(options.limit)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error(&#x27;获取估算参考失败:&#x27;, error)
+    return []
+  }
+
+  return data || []
+}
+
+/**
+ * 为 breakdownNode 检索相关参考（向量语义检索）
+ *
+ * 检索策略：使用 embedding 向量相似度检索，失败时 fallback 到全局高频参考
+ */
+export async function getReferencesForBreakdown(
+  queryText: string,
+  limit: number = 10
+): Promise&lt;EstimateReference[]&gt; {
+  const supabase = await createClient()
+
+  // 尝试向量检索
+  try {
+    const queryEmbedding = await generateEmbedding(queryText)
+
+    const { data, error } = await supabase.rpc(&#x27;match_estimate_references&#x27;, {
+      query_embedding: JSON.stringify(queryEmbedding),
+      match_threshold: 0.3,
+      match_count: limit,
+    })
+
+    if (!error &amp;&amp; data &amp;&amp; data.length &gt; 0) {
+      console.log(&#x27;[RAG] 向量检索命中:&#x27;, {
+        query: queryText.substring(0, 100),
+        resultCount: data.length,
+        similarities: data.map((d: EstimateReference &amp; { similarity: number }) =&gt;
+          d.similarity?.toFixed(3)
+        ),
+      })
+      return data
+    }
+  } catch (embeddingError) {
+    console.warn(&#x27;[RAG] 向量检索失败，回退到全局高频参考:&#x27;, embeddingError)
+  }
+
+  // Fallback: 全局高频参考
+  const { data: fallbackData } = await supabase
+    .from(&#x27;estimate_references&#x27;)
+    .select(&#x27;*&#x27;)
+    .order(&#x27;usage_count&#x27;, { ascending: false })
+    .limit(limit)
+
+  return fallbackData || []
+}
+
+/**
+ * 将已验证的 function_module 提取到参考库
+ */
+export async function extractToReference(
+  functionModuleId: string,
+  metadata: {
+    projectType?: string
+    category?: string
+    industry?: string
+    techStack?: string[]
+  }
+): Promise&lt;{ success: boolean; error?: string; id?: string }&gt; {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { success: false, error: &#x27;请先登录&#x27; }
+  }
+
+  // 获取功能模块数据
+  const { data: fm, error: fmError } = await supabase
+    .from(&#x27;function_modules&#x27;)
+    .select(&#x27;*, projects!inner(id, created_by)&#x27;)
+    .eq(&#x27;id&#x27;, functionModuleId)
+    .single()
+
+  if (fmError || !fm) {
+    return { success: false, error: &#x27;功能模块不存在&#x27; }
+  }
+
+  // 检查权限
+  if (fm.projects.created_by !== user.id) {
+    return { success: false, error: &#x27;无权限操作此功能模块&#x27; }
+  }
+
+  // 检查是否已提取过
+  const { data: existing } = await supabase
+    .from(&#x27;estimate_references&#x27;)
+    .select(&#x27;id&#x27;)
+    .eq(&#x27;source_function_module_id&#x27;, functionModuleId)
+    .maybeSingle()
+
+  if (existing) {
+    return { success: false, error: &#x27;该功能模块已存在于参考库中&#x27; }
+  }
+
+  // 插入参考库
+  const { data: ref, error: insertError } = await supabase
+    .from(&#x27;estimate_references&#x27;)
+    .insert({
+      module_name: fm.module_name,
+      function_name: fm.function_name,
+      description: fm.description,
+      difficulty_level: fm.difficulty_level,
+      role_estimates: fm.role_estimates || [],
+      estimated_hours: fm.estimated_hours,
+      project_type: metadata.projectType || null,
+      category: metadata.category || null,
+      industry: metadata.industry || null,
+      tech_stack: metadata.techStack || null,
+      source_project_id: fm.project_id,
+      source_function_module_id: functionModuleId,
+      verified_by: user.id,
+    })
+    .select(&#x27;id&#x27;)
+    .single()
+
+  if (insertError) {
+    console.error(&#x27;提取到参考库失败:&#x27;, insertError)
+    return { success: false, error: insertError.message }
+  }
+
+  // 异步生成 embedding（不阻塞主流程）
+  const embeddingText = buildEmbeddingText({
+    module_name: fm.module_name,
+    function_name: fm.function_name,
+    description: fm.description,
+  })
+  generateEmbedding(embeddingText)
+    .then(async (embedding) =&gt; {
+      const supabaseForUpdate = await createClient()
+      await supabaseForUpdate
+        .from(&#x27;estimate_references&#x27;)
+        .update({ embedding: JSON.stringify(embedding) })
+        .eq(&#x27;id&#x27;, ref.id)
+    })
+    .catch((err) =&gt; console.warn(&#x27;[RAG] 生成 embedding 失败:&#x27;, err))
+
+  revalidatePath(&#x27;/function-library&#x27;)
+  return { success: true, id: ref.id }
+}
+
+/**
+ * 批量提取已验证的功能模块到参考库
+ */
+export async function batchExtractToReferences(
+  projectId: string,
+  metadata: {
+    projectType?: string
+    category?: string
+    industry?: string
+    techStack?: string[]
+  }
+): Promise&lt;{ success: boolean; error?: string; count?: number }&gt; {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { success: false, error: &#x27;请先登录&#x27; }
+  }
+
+  // 获取该项目所有已验证的功能模块
+  const { data: modules, error: queryError } = await supabase
+    .from(&#x27;function_modules&#x27;)
+    .select(&#x27;*, projects!inner(id, created_by)&#x27;)
+    .eq(&#x27;project_id&#x27;, projectId)
+    .eq(&#x27;is_verified&#x27;, true)
+    .eq(&#x27;projects.created_by&#x27;, user.id)
+
+  if (queryError || !modules || modules.length === 0) {
+    return { success: false, error: &#x27;没有找到已验证的功能模块&#x27; }
+  }
+
+  // 获取已提取过的模块 ID
+  const moduleIds = modules.map((m) =&gt; m.id)
+  const { data: existingRefs } = await supabase
+    .from(&#x27;estimate_references&#x27;)
+    .select(&#x27;source_function_module_id&#x27;)
+    .in(&#x27;source_function_module_id&#x27;, moduleIds)
+
+  const existingModuleIds = new Set(
+    (existingRefs || []).map((r) =&gt; r.source_function_module_id)
+  )
+
+  // 过滤掉已提取的模块
+  const newModules = modules.filter((m) =&gt; !existingModuleIds.has(m.id))
+
+  if (newModules.length === 0) {
+    return { success: false, error: &#x27;所有已验证模块均已在参考库中&#x27; }
+  }
+
+  // 批量插入
+  const references = newModules.map((fm) =&gt; ({
+    module_name: fm.module_name,
+    function_name: fm.function_name,
+    description: fm.description,
+    difficulty_level: fm.difficulty_level,
+    role_estimates: fm.role_estimates || [],
+    estimated_hours: fm.estimated_hours,
+    project_type: metadata.projectType || null,
+    category: metadata.category || null,
+    industry: metadata.industry || null,
+    tech_stack: metadata.techStack || null,
+    source_project_id: projectId,
+    source_function_module_id: fm.id,
+    verified_by: user.id,
+  }))
+
+  const { data: insertedRefs, error: insertError } = await supabase
+    .from(&#x27;estimate_references&#x27;)
+    .insert(references)
+    .select(&#x27;id, module_name, function_name, description&#x27;)
+
+  if (insertError) {
+    console.error(&#x27;批量提取到参考库失败:&#x27;, insertError)
+    return { success: false, error: insertError.message }
+  }
+
+  // 异步批量生成 embedding（不阻塞主流程）
+  if (insertedRefs &amp;&amp; insertedRefs.length &gt; 0) {
+    const texts = insertedRefs.map((ref) =&gt; buildEmbeddingText(ref))
+    generateEmbeddings(texts)
+      .then(async (embeddings) =&gt; {
+        const supabaseForUpdate = await createClient()
+        for (let i = 0; i &lt; insertedRefs.length; i++) {
+          await supabaseForUpdate
+            .from(&#x27;estimate_references&#x27;)
+            .update({ embedding: JSON.stringify(embeddings[i]) })
+            .eq(&#x27;id&#x27;, insertedRefs[i].id)
+        }
+        console.log(&#x27;[RAG] 批量 embedding 生成完成:&#x27;, insertedRefs.length)
+      })
+      .catch((err) =&gt; console.warn(&#x27;[RAG] 批量生成 embedding 失败:&#x27;, err))
+  }
+
+  revalidatePath(&#x27;/function-library&#x27;)
+  return { success: true, count: references.length }
+}
+
+/**
+ * 删除估算参考
+ */
+export async function deleteEstimateReference(
+  id: string
+): Promise&lt;{ success: boolean; error?: string }&gt; {
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from(&#x27;estimate_references&#x27;)
+    .delete()
+    .eq(&#x27;id&#x27;, id)
+
+  if (error) {
+    console.error(&#x27;删除估算参考失败:&#x27;, error)
+    return { success: false, error: error.message }
+  }
+
+  revalidatePath(&#x27;/function-library&#x27;)
+  return { success: true }
+}
+
+/**
+ * 更新参考使用计数（fire-and-forget 调用）
+ */
+export async function incrementReferenceUsage(ids: string[]): Promise&lt;void&gt; {
+  if (ids.length === 0) return
+
+  const supabase = await createClient()
+
+  // 逐个更新使用计数（Supabase 不支持批量 increment）
+  for (const id of ids) {
+    try {
+      await supabase.rpc(&#x27;increment_estimate_reference_usage&#x27;, {
+        reference_id: id,
+      })
+    } catch {
+      // 静默失败，不影响主流程
+    }
+  }
+}
+
+/**
+ * 获取参考库统计信息
+ */
+export async function getEstimateReferenceStats(): Promise&lt;{
+  totalCount: number
+  projectTypes: string[]
+  categories: string[]
+}&gt; {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from(&#x27;estimate_references&#x27;)
+    .select(&#x27;project_type, category&#x27;)
+
+  if (error || !data) {
+    return { totalCount: 0, projectTypes: [], categories: [] }
+  }
+
+  const projectTypes = [
+    ...new Set(data.map((d) =&gt; d.project_type).filter(Boolean) as string[]),
+  ]
+  const categories = [
+    ...new Set(data.map((d) =&gt; d.category).filter(Boolean) as string[]),
+  ]
+
+  return {
+    totalCount: data.length,
+    projectTypes: projectTypes.sort(),
+    categories: categories.sort(),
+  }
+}
+</pre>
+            </section>
+            
+            <section class="file-section page-break">
+              <h2>6. lib/agents/graph.ts</h2>
+              <p class="meta">文件类型：源码文件 | 行数：223</p>
+              <pre>import { StateGraph, START, END } from &#x27;@langchain/langgraph&#x27;
+import {
+  PresalesStateAnnotation,
+  createInitialState,
+  extractWorkflowResult,
+  type PresalesState,
+  type WorkflowResult,
+  type WorkflowSystemConfig,
+} from &#x27;./state&#x27;
+import { analyzeNode } from &#x27;./nodes/analyze&#x27;
+import { breakdownNode } from &#x27;./nodes/breakdown&#x27;
+import { estimateNode } from &#x27;./nodes/estimate&#x27;
+import { calculateNode } from &#x27;./nodes/calculate&#x27;
+
+/**
+ * 条件路由函数
+ *
+ * 根据当前状态决定下一个执行节点
+ */
+function shouldContinue(state: PresalesState): string {
+  // 如果有错误，直接结束
+  if (state.error) {
+    console.log(&#x27;[Graph] 检测到错误，终止工作流:&#x27;, state.error)
+    return &#x27;end&#x27;
+  }
+
+  // 根据当前步骤决定下一步
+  switch (state.currentStep) {
+    case &#x27;breakdown&#x27;:
+      return &#x27;breakdown&#x27;
+    case &#x27;estimate&#x27;:
+      return &#x27;estimate&#x27;
+    case &#x27;calculate&#x27;:
+      return &#x27;calculate&#x27;
+    case &#x27;complete&#x27;:
+      return &#x27;end&#x27;
+    default:
+      return &#x27;end&#x27;
+  }
+}
+
+/**
+ * 创建售前成本估算工作流图
+ *
+ * 工作流程：
+ * START → analyze → breakdown → estimate → calculate → END
+ *
+ * 每个节点都可能因错误提前终止工作流
+ */
+const workflow = new StateGraph(PresalesStateAnnotation)
+  // 添加节点
+  .addNode(&#x27;analyze&#x27;, analyzeNode)
+  .addNode(&#x27;breakdown&#x27;, breakdownNode)
+  .addNode(&#x27;estimate&#x27;, estimateNode)
+  .addNode(&#x27;calculate&#x27;, calculateNode)
+
+  // 定义边：从 START 到 analyze
+  .addEdge(START, &#x27;analyze&#x27;)
+
+  // analyze 节点的条件路由
+  .addConditionalEdges(&#x27;analyze&#x27;, shouldContinue, {
+    breakdown: &#x27;breakdown&#x27;,
+    end: END,
+  })
+
+  // breakdown 节点的条件路由
+  .addConditionalEdges(&#x27;breakdown&#x27;, shouldContinue, {
+    estimate: &#x27;estimate&#x27;,
+    end: END,
+  })
+
+  // estimate 节点的条件路由
+  .addConditionalEdges(&#x27;estimate&#x27;, shouldContinue, {
+    calculate: &#x27;calculate&#x27;,
+    end: END,
+  })
+
+  // calculate 节点的条件路由
+  .addConditionalEdges(&#x27;calculate&#x27;, shouldContinue, {
+    end: END,
+  })
+
+/**
+ * 编译后的工作流实例
+ */
+export const presalesGraph = workflow.compile()
+
+/**
+ * 运行售前成本估算工作流
+ *
+ * @param projectId - 项目 ID
+ * @param requirementId - 需求 ID
+ * @param rawRequirement - 原始需求文本
+ * @param projectDescription - 项目描述
+ * @param systemConfig - 系统配置（人天成本、风险缓冲比例等）
+ * @returns 工作流执行结果
+ */
+export async function runPresalesWorkflow(
+  projectId: string,
+  requirementId: string,
+  rawRequirement: string,
+  projectDescription: string = &#x27;&#x27;,
+  systemConfig: WorkflowSystemConfig | null = null
+): Promise&lt;WorkflowResult&gt; {
+  console.log(&#x27;[Graph] 开始执行售前成本估算工作流:&#x27;, {
+    projectId,
+    requirementId,
+    requirementLength: rawRequirement.length,
+    systemConfig,
+  })
+
+  const startTime = Date.now()
+
+  try {
+    // 创建初始状态
+    const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription, systemConfig)
+
+    // 执行工作流
+    const finalState = await presalesGraph.invoke(initialState)
+
+    const duration = Date.now() - startTime
+    console.log(&#x27;[Graph] 工作流执行完成:&#x27;, {
+      duration: `${duration}ms`,
+      success: !finalState.error,
+      hasAnalysis: !!finalState.analysis,
+      functionsCount: finalState.functions?.length || 0,
+      hasEstimation: !!finalState.estimation,
+      hasCost: !!finalState.cost,
+    })
+
+    // 提取并返回结果
+    return extractWorkflowResult(finalState)
+  } catch (error) {
+    const duration = Date.now() - startTime
+    console.error(&#x27;[Graph] 工作流执行失败:&#x27;, {
+      duration: `${duration}ms`,
+      error,
+    })
+
+    return {
+      success: false,
+      analysis: null,
+      functions: [],
+      identifiedRoles: [],
+      additionalWork: [],
+      estimation: null,
+      cost: null,
+      error: error instanceof Error ? error.message : &#x27;工作流执行失败&#x27;,
+    }
+  }
+}
+
+/**
+ * 流式执行售前成本估算工作流
+ *
+ * @param projectId - 项目 ID
+ * @param requirementId - 需求 ID
+ * @param rawRequirement - 原始需求文本
+ * @param projectDescription - 项目描述
+ * @param systemConfig - 系统配置（人天成本、风险缓冲比例等）
+ * @returns AsyncIterable 流式状态更新
+ */
+export async function* streamPresalesWorkflow(
+  projectId: string,
+  requirementId: string,
+  rawRequirement: string,
+  projectDescription: string = &#x27;&#x27;,
+  systemConfig: WorkflowSystemConfig | null = null
+): AsyncIterable&lt;{ step: string; state: Partial&lt;PresalesState&gt; }&gt; {
+  console.log(&#x27;[Graph] 开始流式执行工作流&#x27;)
+
+  const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription, systemConfig)
+
+  // 使用 stream 方法获取状态更新流
+  const stream = await presalesGraph.stream(initialState, {
+    streamMode: &#x27;values&#x27;,
+  })
+
+  for await (const state of stream) {
+    yield {
+      step: state.currentStep,
+      state: {
+        currentStep: state.currentStep,
+        analysis: state.analysis,
+        functions: state.functions,
+        identifiedRoles: state.identifiedRoles,
+        additionalWork: state.additionalWork,
+        estimation: state.estimation,
+        cost: state.cost,
+        error: state.error,
+        isComplete: state.isComplete,
+      },
+    }
+  }
+}
+
+/**
+ * 获取工作流步骤信息
+ */
+export const WORKFLOW_STEPS = [
+  {
+    key: &#x27;analyze&#x27;,
+    label: &#x27;需求分析&#x27;,
+    description: &#x27;提取项目类型、业务目标、核心功能&#x27;,
+  },
+  {
+    key: &#x27;breakdown&#x27;,
+    label: &#x27;功能拆解&#x27;,
+    description: &#x27;拆分功能模块、查询功能库&#x27;,
+  },
+  {
+    key: &#x27;estimate&#x27;,
+    label: &#x27;工时评估&#x27;,
+    description: &#x27;计算开发工时、人员配置&#x27;,
+  },
+  {
+    key: &#x27;calculate&#x27;,
+    label: &#x27;成本计算&#x27;,
+    description: &#x27;计算人力成本、生成报价&#x27;,
+  },
+] as const
+
+export type WorkflowStepKey = (typeof WORKFLOW_STEPS)[number][&#x27;key&#x27;]
+</pre>
+            </section>
+            
+            <section class="file-section page-break">
+              <h2>7. lib/agents/state.ts</h2>
+              <p class="meta">文件类型：源码文件 | 行数：280</p>
+              <pre>import { Annotation, MessagesAnnotation } from &#x27;@langchain/langgraph&#x27;
+import type { ParsedRequirement, FunctionModule, EffortEstimation, CostEstimate } from &#x27;@/types&#x27;
+
+/**
+ * 售前成本估算 Agent 工作流状态定义
+ *
+ * 使用 LangGraph 的 Annotation 系统定义状态结构
+ * 参考: https://langchain-ai.github.io/langgraphjs/
+ */
+
+// 工作流阶段类型
+export type WorkflowStep = &#x27;analyze&#x27; | &#x27;breakdown&#x27; | &#x27;estimate&#x27; | &#x27;calculate&#x27; | &#x27;complete&#x27;
+
+// 系统配置（用于成本计算）
+export interface WorkflowSystemConfig {
+  laborCostPerDay: number
+  riskBufferPercentage: number
+  workingHoursPerDay: number
+}
+
+// Agent 分析结果（与 ParsedRequirement 对齐但独立定义以便扩展）
+export interface AgentAnalysisResult {
+  projectType: string
+  businessGoals: string[]
+  keyFeatures: string[]
+  techStack: string[]
+  nonFunctionalRequirements: {
+    performance?: string
+    security?: string
+    scalability?: string
+  }
+  risks: string[]
+}
+
+// 角色工时评估（动态角色）
+export interface RoleEstimate {
+  role: string           // 角色名称，如：后端开发、嵌入式工程师、算法工程师
+  days: number           // 该角色工时（人天）
+  reason?: string        // 工时评估依据（若偏离参考范围需说明）
+}
+
+// 功能模块输出（用于 Agent 输出）- 支持动态角色
+export interface AgentFunctionModule {
+  moduleName: string
+  functionName: string
+  description: string
+  difficultyLevel: &#x27;simple&#x27; | &#x27;medium&#x27; | &#x27;complex&#x27; | &#x27;very_complex&#x27;
+  // 改为按角色评估工时（动态角色数组）
+  roleEstimates: RoleEstimate[]
+  dependencies?: string[]
+}
+
+// 额外工作项（非功能开发工作）
+export interface AdditionalWorkItem {
+  workItem: string                // 工作项名称，如：技术架构设计、联调测试
+  days: number                    // 工时（人天）
+  assignedRoles: string[]         // 由哪些角色承担
+}
+
+// 识别出的项目角色
+export interface IdentifiedRole {
+  role: string                    // 角色名称
+  responsibility: string          // 职责描述
+  headcount: number               // 建议人数
+}
+
+// 工时评估输出 - 新版本支持动态角色汇总
+export interface AgentEffortEstimation {
+  // 识别出的项目所需角色
+  identifiedRoles: IdentifiedRole[]
+  // 额外工作项
+  additionalWork: AdditionalWorkItem[]
+  // 按角色汇总的工时（从功能模块自动计算）
+  roleSummary: {
+    role: string
+    totalDays: number     // 该角色总工时（人天）
+    headcount: number     // 建议人数
+  }[]
+  // 缓冲系数（根据项目类型自动判断：1.2-2.0）
+  bufferCoefficient: number
+  // 缓冲系数说明
+  bufferReason: string
+}
+
+// 成本计算输出 - 支持动态角色汇总
+export interface AgentCostEstimate {
+  // 基础工时统计
+  baseDays: number                    // 基础总人天（功能模块 + 额外工作）
+  bufferedDays: number                // 含缓冲的总人天
+  bufferCoefficient: number           // 缓冲系数
+
+  // 按角色汇总（核心输出）
+  roleBreakdown: {
+    role: string
+    days: number                      // 该角色总人天
+    cost: number                      // 该角色总成本
+    headcount: number                 // 建议人数
+  }[]
+
+  // 额外工作汇总
+  additionalWorkBreakdown: {
+    workItem: string
+    days: number
+    cost: number
+  }[]
+
+  // 成本汇总
+  laborCost: number                   // 人力成本
+  serviceCost: number                 // 第三方服务成本
+  infrastructureCost: number          // 基础设施成本
+  totalCost: number                   // 总成本（含缓冲）
+
+  // 第三方服务明细
+  thirdPartyServices: {
+    name: string
+    cost: number
+  }[]
+}
+
+/**
+ * 定义 Agent 工作流状态
+ *
+ * 使用 LangGraph 的 Annotation 系统，支持：
+ * - 状态持久化
+ * - 增量更新
+ * - 类型安全
+ */
+export const PresalesStateAnnotation = Annotation.Root({
+  // 继承消息历史（用于对话式交互）
+  ...MessagesAnnotation.spec,
+
+  // ========== 项目信息 ==========
+  /** 项目 ID */
+  projectId: Annotation&lt;string&gt;({
+    default: () =&gt; &#x27;&#x27;,
+    reducer: (_, next) =&gt; next,
+  }),
+
+  /** 需求 ID */
+  requirementId: Annotation&lt;string&gt;({
+    default: () =&gt; &#x27;&#x27;,
+    reducer: (_, next) =&gt; next,
+  }),
+
+  /** 原始需求文本 */
+  rawRequirement: Annotation&lt;string&gt;({
+    default: () =&gt; &#x27;&#x27;,
+    reducer: (_, next) =&gt; next,
+  }),
+
+  /** 项目描述 */
+  projectDescription: Annotation&lt;string&gt;({
+    default: () =&gt; &#x27;&#x27;,
+    reducer: (_, next) =&gt; next,
+  }),
+
+  /** 系统配置（用于成本计算） */
+  systemConfig: Annotation&lt;WorkflowSystemConfig | null&gt;({
+    default: () =&gt; null,
+    reducer: (_, next) =&gt; next,
+  }),
+
+  // ========== 各阶段输出 ==========
+  /** 需求分析结果 */
+  analysis: Annotation&lt;AgentAnalysisResult | null&gt;({
+    default: () =&gt; null,
+    reducer: (_, next) =&gt; next,
+  }),
+
+  /** 功能模块列表 */
+  functions: Annotation&lt;AgentFunctionModule[]&gt;({
+    default: () =&gt; [],
+    reducer: (_, next) =&gt; next,
+  }),
+
+  /** 识别出的项目角色 */
+  identifiedRoles: Annotation&lt;IdentifiedRole[]&gt;({
+    default: () =&gt; [],
+    reducer: (_, next) =&gt; next,
+  }),
+
+  /** 额外工作项（非功能开发工作） */
+  additionalWork: Annotation&lt;AdditionalWorkItem[]&gt;({
+    default: () =&gt; [],
+    reducer: (_, next) =&gt; next,
+  }),
+
+  /** 工时评估结果 */
+  estimation: Annotation&lt;AgentEffortEstimation | null&gt;({
+    default: () =&gt; null,
+    reducer: (_, next) =&gt; next,
+  }),
+
+  /** 成本计算结果 */
+  cost: Annotation&lt;AgentCostEstimate | null&gt;({
+    default: () =&gt; null,
+    reducer: (_, next) =&gt; next,
+  }),
+
+  // ========== 工作流控制 ==========
+  /** 当前执行阶段 */
+  currentStep: Annotation&lt;WorkflowStep&gt;({
+    default: () =&gt; &#x27;analyze&#x27;,
+    reducer: (_, next) =&gt; next,
+  }),
+
+  /** 错误信息 */
+  error: Annotation&lt;string | null&gt;({
+    default: () =&gt; null,
+    reducer: (_, next) =&gt; next,
+  }),
+
+  /** 是否已完成 */
+  isComplete: Annotation&lt;boolean&gt;({
+    default: () =&gt; false,
+    reducer: (_, next) =&gt; next,
+  }),
+})
+
+/** 工作流状态类型 */
+export type PresalesState = typeof PresalesStateAnnotation.State
+
+/**
+ * 创建初始状态
+ */
+export function createInitialState(
+  projectId: string,
+  requirementId: string,
+  rawRequirement: string,
+  projectDescription: string = &#x27;&#x27;,
+  systemConfig: WorkflowSystemConfig | null = null
+): Partial&lt;PresalesState&gt; {
+  return {
+    projectId,
+    requirementId,
+    rawRequirement,
+    projectDescription,
+    systemConfig,
+    messages: [],
+    analysis: null,
+    functions: [],
+    identifiedRoles: [],
+    additionalWork: [],
+    estimation: null,
+    cost: null,
+    currentStep: &#x27;analyze&#x27;,
+    error: null,
+    isComplete: false,
+  }
+}
+
+/**
+ * 工作流结果类型
+ */
+export interface WorkflowResult {
+  success: boolean
+  analysis: AgentAnalysisResult | null
+  functions: AgentFunctionModule[]
+  identifiedRoles: IdentifiedRole[]
+  additionalWork: AdditionalWorkItem[]
+  estimation: AgentEffortEstimation | null
+  cost: AgentCostEstimate | null
+  error: string | null
+}
+
+/**
+ * 从最终状态提取工作流结果
+ */
+export function extractWorkflowResult(state: PresalesState): WorkflowResult {
+  return {
+    success: state.isComplete &amp;&amp; !state.error,
+    analysis: state.analysis,
+    functions: state.functions,
+    identifiedRoles: state.identifiedRoles,
+    additionalWork: state.additionalWork,
+    estimation: state.estimation,
+    cost: state.cost,
+    error: state.error,
+  }
+}
+</pre>
+            </section>
+            
+            <section class="file-section page-break">
+              <h2>8. lib/agents/nodes/breakdown.ts</h2>
+              <p class="meta">文件类型：源码文件 | 行数：359</p>
+              <pre>import { generateText } from &#x27;ai&#x27;
+import { defaultModel } from &#x27;@/lib/ai/config&#x27;
+import { createTelemetryConfig } from &#x27;@/lib/observability/langfuse&#x27;
+import { getReferencesForBreakdown, incrementReferenceUsage } from &#x27;@/app/actions/estimate-references&#x27;
+import type { EstimateReference } from &#x27;@/types&#x27;
+import type { PresalesState, AgentFunctionModule, IdentifiedRole, AdditionalWorkItem } from &#x27;../state&#x27;
+
+/**
+ * CSV 解析工具函数
+ */
+function parseCSVLine(line: string): string[] {
+  const result: string[] = []
+  let current = &#x27;&#x27;
+  let inQuotes = false
+
+  for (let i = 0; i &lt; line.length; i++) {
+    const char = line[i]
+    if (char === &#x27;&quot;&#x27;) {
+      inQuotes = !inQuotes
+    } else if (char === &#x27;,&#x27; &amp;&amp; !inQuotes) {
+      result.push(current.trim())
+      current = &#x27;&#x27;
+    } else {
+      current += char
+    }
+  }
+  result.push(current.trim())
+  return result
+}
+
+/**
+ * 解析 CSV 输出为结构化数据
+ */
+function parseBreakdownCSV(text: string): {
+  identifiedRoles: IdentifiedRole[]
+  modules: AgentFunctionModule[]
+  additionalWork: AdditionalWorkItem[]
+} {
+  const lines = text.split(&#x27;\n&#x27;).map(l =&gt; l.trim()).filter(l =&gt; l)
+
+  const identifiedRoles: IdentifiedRole[] = []
+  const moduleMap = new Map&lt;string, AgentFunctionModule&gt;()
+  const additionalWork: AdditionalWorkItem[] = []
+
+  let currentSection = &#x27;&#x27;
+
+  for (const line of lines) {
+    // 检测分区标记（支持带或不带 ### 前缀）
+    if (line === &#x27;ROLES&#x27; || line.startsWith(&#x27;### ROLES&#x27;) || line.startsWith(&#x27;###ROLES&#x27;)) {
+      currentSection = &#x27;roles&#x27;
+      continue
+    }
+    if (line === &#x27;MODULES&#x27; || line.startsWith(&#x27;### MODULES&#x27;) || line.startsWith(&#x27;###MODULES&#x27;)) {
+      currentSection = &#x27;modules&#x27;
+      continue
+    }
+    if (line === &#x27;ADDITIONAL&#x27; || line.startsWith(&#x27;### ADDITIONAL&#x27;) || line.startsWith(&#x27;###ADDITIONAL&#x27;)) {
+      currentSection = &#x27;additional&#x27;
+      continue
+    }
+
+    // 跳过表头
+    if (line.startsWith(&#x27;角色,&#x27;) || line.startsWith(&#x27;模块名,&#x27;) || line.startsWith(&#x27;工作项,&#x27;)) {
+      continue
+    }
+
+    // 跳过空行和分隔符
+    if (!line || line.startsWith(&#x27;---&#x27;) || line.startsWith(&#x27;```&#x27;)) {
+      continue
+    }
+
+    const fields = parseCSVLine(line)
+
+    if (currentSection === &#x27;roles&#x27; &amp;&amp; fields.length &gt;= 3) {
+      identifiedRoles.push({
+        role: fields[0],
+        responsibility: fields[1],
+        headcount: parseInt(fields[2]) || 1,
+      })
+    } else if (currentSection === &#x27;modules&#x27; &amp;&amp; fields.length &gt;= 4) {
+      // 紧凑格式：模块名,功能名,描述,角色工时
+      // 角色工时格式：产品经理:1;UI设计师:0.5;前端开发:2
+      const [moduleName, functionName, description, roleEstimatesStr] = fields
+
+      // 解析角色工时
+      const roleEstimates = roleEstimatesStr.split(&#x27;;&#x27;).map(item =&gt; {
+        const [role, daysStr] = item.split(&#x27;:&#x27;)
+        return {
+          role: role?.trim() || &#x27;&#x27;,
+          days: parseFloat(daysStr) || 0,
+          reason: undefined,
+        }
+      }).filter(r =&gt; r.role &amp;&amp; r.days &gt; 0)
+
+      moduleMap.set(`${moduleName}|${functionName}`, {
+        moduleName,
+        functionName,
+        description,
+        difficultyLevel: &#x27;medium&#x27;, // 默认值，保持类型兼容
+        roleEstimates,
+        dependencies: [],
+      })
+    } else if (currentSection === &#x27;additional&#x27; &amp;&amp; fields.length &gt;= 3) {
+      // 工作项,人天,角色列表
+      additionalWork.push({
+        workItem: fields[0],
+        days: parseFloat(fields[1]) || 0,
+        assignedRoles: fields[2].split(&#x27;;&#x27;).map(r =&gt; r.trim()).filter(r =&gt; r),
+      })
+    }
+  }
+
+  return {
+    identifiedRoles,
+    modules: Array.from(moduleMap.values()),
+    additionalWork,
+  }
+}
+
+/**
+ * 功能拆解提示词 - CSV 格式输出
+ */
+const BREAKDOWN_PROMPT = `你是一位专业的软件项目工时评估专家。
+
+根据需求文档完成以下任务，并以 CSV 格式输出结果。
+
+## 任务
+1. 识别项目所需的开发角色
+2. 将项目拆解为详细的功能模块
+3. 为每个功能评估各角色的工时（人天）
+4. 评估额外的非功能开发工作
+
+## 角色参考
+- Web/移动应用：产品经理、UI/UX设计师、前端开发、后端开发、小程序开发、测试工程师
+- 嵌入式系统：嵌入式工程师、硬件工程师、驱动开发、固件工程师、测试工程师
+- 数据平台：数据工程师、ETL开发、数据分析师、后端开发、测试工程师
+
+## 工时评估原则
+| 复杂度 | 工时范围 | 判断标准 |
+|-------|---------|---------|
+| 简单 | 1-3人天 | 单一功能，无复杂逻辑，标准CRUD |
+| 中等 | 3-8人天 | 多个子功能，有业务逻辑，需要多表关联 |
+| 复杂 | 8-15人天 | 涉及多系统交互，复杂算法，第三方对接 |
+| 非常复杂 | 15+人天 | 全新领域，高度定制化，核心业务逻辑 |
+
+
+
+### 复杂度判断因素
+- 是否涉及第三方API对接
+- 是否有复杂业务逻辑（如分账、库存、权限）
+- 是否需要多端协作
+- 是否有特殊交互设计
+- 是否涉及支付、安全等敏感功能
+- 是否需要数据迁移或兼容
+
+
+---
+
+**项目描述**：
+{projectDescription}
+
+**原始需求文档**：
+{rawRequirement}
+
+---
+
+## 输出格式要求
+
+严格按以下 CSV 格式输出，不要输出任何解释文字：
+
+### ROLES
+角色,职责,人数
+产品经理,需求分析原型设计,1
+UI设计师,界面交互设计,1
+...
+
+### MODULES
+模块名,功能名,描述,角色工时
+用户模块,微信授权登录,获取微信号码完成注册,产品经理:1;UI设计师:0.5;小程序开发:2;后端开发:2;测试工程师:1
+...
+
+### ADDITIONAL
+工作项,人天,角色列表
+需求评审,2,产品经理
+联调测试,3,前端开发;后端开发;测试工程师
+...
+
+注意：
+1. 要保证拆解功能模块的完整性
+2. 角色工时格式为 角色名:人天，多个角色用分号分隔
+3. 每个功能的所有参与角色工时写在一行
+4. 不要遗漏任何角色的工时评估
+
+{referenceSection}`
+
+/**
+ * 将参考库数据格式化为 prompt 片段
+ */
+function formatReferencesForPrompt(references: EstimateReference[]): string {
+  if (references.length === 0) return &#x27;&#x27;
+
+  const lines = references.map((ref) =&gt; {
+    const roleStr = ref.role_estimates
+      .map((r) =&gt; `${r.role}:${r.days}`)
+      .join(&#x27;;&#x27;)
+    return `${ref.module_name},${ref.function_name},${ref.description || &#x27;&#x27;},${roleStr}`
+  })
+
+  return `
+## 历史验证参考（仅供参考，请根据实际需求独立判断）
+
+以下是历史项目中经过验证的功能工时评估，供你参考类似功能的工时规模：
+
+模块名,功能名,描述,角色工时
+${lines.join(&#x27;\n&#x27;)}
+
+注意：以上仅为参考，实际工时应根据本项目具体需求和复杂度独立评估。`
+}
+
+/**
+ * 功能拆解节点
+ *
+ * 使用 AI SDK 的 generateText + Output.object
+ */
+export async function breakdownNode(
+  state: PresalesState
+): Promise&lt;Partial&lt;PresalesState&gt;&gt; {
+  // 验证前置条件
+  if (!state.analysis) {
+    return {
+      error: &#x27;缺少需求分析结果，无法进行功能拆解&#x27;,
+      currentStep: &#x27;breakdown&#x27;,
+    }
+  }
+
+  try {
+    // 查询相关估算参考（使用 analysis 结果构造语义查询文本）
+    let referenceSection = &#x27;&#x27;
+    let usedReferenceIds: string[] = []
+
+    try {
+      // 用 projectType + keyFeatures 构造语义查询，比直接用 rawRequirement 更精准
+      const queryText = [
+        state.analysis.projectType,
+        ...(state.analysis.keyFeatures || []),
+      ]
+        .filter(Boolean)
+        .join(&#x27; &#x27;)
+
+      const references = await getReferencesForBreakdown(queryText, 10)
+
+      if (references.length &gt; 0) {
+        referenceSection = formatReferencesForPrompt(references)
+        usedReferenceIds = references.map((r) =&gt; r.id)
+        console.log(&#x27;[Agent] 注入估算参考:&#x27;, {
+          queryText: queryText.substring(0, 100),
+          referenceCount: references.length,
+        })
+      }
+    } catch (refError) {
+      // 参考查询失败不阻塞主流程
+      console.warn(&#x27;[Agent] 获取估算参考失败，继续执行:&#x27;, refError)
+    }
+
+    // 构建提示词
+    // 注意：不注入 analysis 结果到 breakdown 提示词中
+    // 当需求文档详细时，analysis 的摘要会产生锚定效应，导致功能拆解偏粗
+    // breakdownNode 直接基于 rawRequirement 拆解，能获得更准确的粒度
+    const prompt = BREAKDOWN_PROMPT
+      .replace(&#x27;{projectDescription}&#x27;, state.projectDescription || &#x27;未提供项目描述&#x27;)
+      .replace(&#x27;{rawRequirement}&#x27;, state.rawRequirement)
+      .replace(&#x27;{referenceSection}&#x27;, referenceSection)
+
+    // 调用 AI 模型进行功能拆解（CSV 格式）
+    const result = await generateText({
+      model: defaultModel,
+      maxOutputTokens: 8192,
+      temperature: 0.3, // 低温度，更稳定的输出
+      system: `你是一个专业的软件项目工时评估专家。严格按照要求的 CSV 格式输出，不要输出任何解释文字。`,
+      prompt,
+      experimental_telemetry: createTelemetryConfig(&#x27;workflow-breakdown&#x27;, {
+        projectId: state.projectId,
+        requirementId: state.requirementId,
+      }),
+    })
+
+    // 调试：打印模型返回的完整结果
+    console.log(&#x27;[Agent] generateText 返回结果:&#x27;, {
+      textLength: result.text?.length,
+      finishReason: result.finishReason,
+      usage: result.usage,
+    })
+
+    // 打印原始 CSV 输出
+    if (result.text) {
+      console.log(&#x27;[Agent] 模型 CSV 输出 (前2000字符):&#x27;, result.text.substring(0, 2000))
+    }
+
+    // 解析 CSV 输出
+    if (!result.text) {
+      return {
+        error: &#x27;功能拆解未返回有效结果&#x27;,
+        currentStep: &#x27;breakdown&#x27;,
+      }
+    }
+
+    const parsed = parseBreakdownCSV(result.text)
+
+    // 验证输出
+    if (parsed.modules.length === 0) {
+      console.error(&#x27;[Agent] CSV 解析结果为空，原始文本:&#x27;, result.text)
+      return {
+        error: &#x27;功能拆解 CSV 解析失败，未找到功能模块&#x27;,
+        currentStep: &#x27;breakdown&#x27;,
+      }
+    }
+
+    const functions = parsed.modules
+    const identifiedRoles = parsed.identifiedRoles
+    const additionalWork = parsed.additionalWork
+
+    // 计算总人天（功能模块 + 额外工作）
+    const moduleTotalDays = functions.reduce(
+      (sum, f) =&gt; sum + f.roleEstimates.reduce((s, r) =&gt; s + r.days, 0),
+      0
+    )
+    const additionalTotalDays = additionalWork.reduce((sum, w) =&gt; sum + w.days, 0)
+    const totalDays = moduleTotalDays + additionalTotalDays
+
+    console.log(&#x27;[Agent] 功能拆解完成:&#x27;, {
+      modulesCount: functions.length,
+      rolesCount: identifiedRoles.length,
+      additionalWorkCount: additionalWork.length,
+      moduleTotalDays,
+      additionalTotalDays,
+      totalDays,
+    })
+
+    // 记录参考使用计数（fire-and-forget）
+    if (usedReferenceIds.length &gt; 0) {
+      incrementReferenceUsage(usedReferenceIds).catch(() =&gt; {})
+    }
+
+    return {
+      functions,
+      identifiedRoles,
+      additionalWork,
+      currentStep: &#x27;estimate&#x27;,
+      error: null,
+    }
+  } catch (error) {
+    console.error(&#x27;[Agent] 功能拆解失败:&#x27;, error)
+
+    return {
+      error: `功能拆解失败: ${error instanceof Error ? error.message : &#x27;未知错误&#x27;}`,
+      currentStep: &#x27;breakdown&#x27;,
+    }
+  }
+}
+</pre>
+            </section>
+            
+            <section class="file-section page-break">
+              <h2>9. lib/ai/chat-tools.ts</h2>
+              <p class="meta">文件类型：源码文件 | 行数：775</p>
+              <pre>import { tool } from &#x27;ai&#x27;
+import { z } from &#x27;zod&#x27;
+import { createClient } from &#x27;@/lib/supabase/server&#x27;
+import type { ParsedRequirement } from &#x27;@/types&#x27;
+
+/**
+ * 需求澄清对话工具集
+ *
+ * 提供给 AI Agent 在对话过程中保存和修改数据的能力
+ * 使用工厂函数模式，为每个请求创建带有正确上下文的工具
+ */
+
+interface ChatToolsContext {
+  projectId: string
+  requirementId: string
+}
+
+/**
+ * 创建带有上下文的聊天工具集
+ */
+export function createChatTools(context: ChatToolsContext) {
+  const { projectId, requirementId } = context
+
+  // ==================== 需求管理工具 ====================
+
+  const updateRequirement = tool({
+    description: &#x27;更新项目的原始需求文本内容。当用户提供了新的需求描述或想要修改现有需求时使用此工具。&#x27;,
+    inputSchema: z.object({
+      content: z.string().describe(&#x27;新的需求内容文本&#x27;),
+    }),
+    execute: async ({ content }) =&gt; {
+      const supabase = await createClient()
+
+      const { error } = await supabase
+        .from(&#x27;requirements&#x27;)
+        .update({ raw_content: content.trim() })
+        .eq(&#x27;id&#x27;, requirementId)
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return { success: true, message: &#x27;需求内容已更新&#x27; }
+    },
+  })
+
+  const appendRequirement = tool({
+    description: &#x27;在现有需求内容后追加新内容，不覆盖原有内容。当用户补充新的需求细节时使用。&#x27;,
+    inputSchema: z.object({
+      content: z.string().describe(&#x27;要追加的需求内容&#x27;),
+    }),
+    execute: async ({ content }) =&gt; {
+      const supabase = await createClient()
+
+      // 先获取现有内容
+      const { data: requirement } = await supabase
+        .from(&#x27;requirements&#x27;)
+        .select(&#x27;raw_content&#x27;)
+        .eq(&#x27;id&#x27;, requirementId)
+        .single()
+
+      const existingContent = requirement?.raw_content || &#x27;&#x27;
+      const newContent = existingContent + &#x27;\n\n---\n\n&#x27; + content.trim()
+
+      const { error } = await supabase
+        .from(&#x27;requirements&#x27;)
+        .update({ raw_content: newContent })
+        .eq(&#x27;id&#x27;, requirementId)
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return { success: true, message: &#x27;需求内容已追加&#x27; }
+    },
+  })
+
+  const updateParsedRequirement = tool({
+    description: &#x27;更新需求的结构化分析结果，包括项目类型、业务目标、核心功能、技术栈、非功能性需求和风险点。&#x27;,
+    inputSchema: z.object({
+      projectType: z.string().optional().describe(&#x27;项目类型，如：Web应用、移动应用、企业系统等&#x27;),
+      businessGoals: z.array(z.string()).optional().describe(&#x27;业务目标列表&#x27;),
+      keyFeatures: z.array(z.string()).optional().describe(&#x27;核心功能列表&#x27;),
+      techStack: z.array(z.string()).optional().describe(&#x27;技术栈列表&#x27;),
+      nonFunctionalRequirements: z.object({
+        performance: z.string().optional().describe(&#x27;性能要求&#x27;),
+        security: z.string().optional().describe(&#x27;安全要求&#x27;),
+        scalability: z.string().optional().describe(&#x27;可扩展性要求&#x27;),
+      }).optional().describe(&#x27;非功能性需求&#x27;),
+      risks: z.array(z.string()).optional().describe(&#x27;风险点列表&#x27;),
+    }),
+    execute: async (params) =&gt; {
+      const supabase = await createClient()
+
+      // 获取现有的解析内容
+      const { data: requirement } = await supabase
+        .from(&#x27;requirements&#x27;)
+        .select(&#x27;parsed_content&#x27;)
+        .eq(&#x27;id&#x27;, requirementId)
+        .single()
+
+      const existingParsed = (requirement?.parsed_content || {}) as ParsedRequirement
+
+      // 合并更新
+      const updatedParsed: ParsedRequirement = {
+        projectType: params.projectType ?? existingParsed.projectType ?? &#x27;&#x27;,
+        businessGoals: params.businessGoals ?? existingParsed.businessGoals ?? [],
+        keyFeatures: params.keyFeatures ?? existingParsed.keyFeatures ?? [],
+        techStack: params.techStack ?? existingParsed.techStack ?? [],
+        nonFunctionalRequirements: {
+          ...existingParsed.nonFunctionalRequirements,
+          ...params.nonFunctionalRequirements,
+        },
+        risks: params.risks ?? existingParsed.risks ?? [],
+      }
+
+      const { error } = await supabase
+        .from(&#x27;requirements&#x27;)
+        .update({ parsed_content: updatedParsed })
+        .eq(&#x27;id&#x27;, requirementId)
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return { success: true, message: &#x27;需求分析结果已更新&#x27;, data: updatedParsed }
+    },
+  })
+
+  // ==================== 功能模块工具 ====================
+
+  const addFunctionModule = tool({
+    description: &#x27;添加新的功能模块到项目中。用于将用户确认的功能点添加到估算列表。&#x27;,
+    inputSchema: z.object({
+      moduleName: z.string().describe(&#x27;模块名称，如：用户管理、订单系统&#x27;),
+      functionName: z.string().describe(&#x27;功能名称，如：用户登录、订单创建&#x27;),
+      description: z.string().optional().describe(&#x27;功能描述&#x27;),
+      difficultyLevel: z.enum([&#x27;simple&#x27;, &#x27;medium&#x27;, &#x27;complex&#x27;, &#x27;very_complex&#x27;]).describe(&#x27;难度级别：simple(简单)、medium(中等)、complex(复杂)、very_complex(非常复杂)&#x27;),
+      estimatedHours: z.number().describe(&#x27;预估工时（小时）&#x27;),
+    }),
+    execute: async ({ moduleName, functionName, description, difficultyLevel, estimatedHours }) =&gt; {
+      const supabase = await createClient()
+
+      const { data, error } = await supabase
+        .from(&#x27;function_modules&#x27;)
+        .insert({
+          project_id: projectId,
+          module_name: moduleName.trim(),
+          function_name: functionName.trim(),
+          description: description?.trim() || null,
+          difficulty_level: difficultyLevel,
+          estimated_hours: estimatedHours,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return { success: true, message: `功能模块 &quot;${functionName}&quot; 已添加`, data }
+    },
+  })
+
+  const addFunctionModulesBatch = tool({
+    description: &#x27;批量添加多个功能模块到项目中。当需要一次性添加多个功能时使用。&#x27;,
+    inputSchema: z.object({
+      modules: z.array(z.object({
+        moduleName: z.string().describe(&#x27;模块名称&#x27;),
+        functionName: z.string().describe(&#x27;功能名称&#x27;),
+        description: z.string().optional().describe(&#x27;功能描述&#x27;),
+        difficultyLevel: z.enum([&#x27;simple&#x27;, &#x27;medium&#x27;, &#x27;complex&#x27;, &#x27;very_complex&#x27;]).describe(&#x27;难度级别&#x27;),
+        estimatedHours: z.number().describe(&#x27;预估工时（小时）&#x27;),
+      })).describe(&#x27;要添加的功能模块列表&#x27;),
+    }),
+    execute: async ({ modules }) =&gt; {
+      const supabase = await createClient()
+
+      const insertData = modules.map(m =&gt; ({
+        project_id: projectId,
+        module_name: m.moduleName.trim(),
+        function_name: m.functionName.trim(),
+        description: m.description?.trim() || null,
+        difficulty_level: m.difficultyLevel,
+        estimated_hours: m.estimatedHours,
+      }))
+
+      const { data, error } = await supabase
+        .from(&#x27;function_modules&#x27;)
+        .insert(insertData)
+        .select()
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return { success: true, message: `已添加 ${modules.length} 个功能模块`, data }
+    },
+  })
+
+  const updateFunctionHours = tool({
+    description: &#x27;更新指定功能模块的预估工时。&#x27;,
+    inputSchema: z.object({
+      functionId: z.string().describe(&#x27;功能模块ID&#x27;),
+      hours: z.number().describe(&#x27;新的预估工时（小时）&#x27;),
+    }),
+    execute: async ({ functionId, hours }) =&gt; {
+      const supabase = await createClient()
+
+      const { data, error } = await supabase
+        .from(&#x27;function_modules&#x27;)
+        .update({ estimated_hours: hours })
+        .eq(&#x27;id&#x27;, functionId)
+        .eq(&#x27;project_id&#x27;, projectId)
+        .select()
+        .single()
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return { success: true, message: `工时已更新为 ${hours} 小时`, data }
+    },
+  })
+
+  const updateFunctionDifficulty = tool({
+    description: &#x27;更新指定功能模块的难度级别。&#x27;,
+    inputSchema: z.object({
+      functionId: z.string().describe(&#x27;功能模块ID&#x27;),
+      difficultyLevel: z.enum([&#x27;simple&#x27;, &#x27;medium&#x27;, &#x27;complex&#x27;, &#x27;very_complex&#x27;]).describe(&#x27;新的难度级别&#x27;),
+    }),
+    execute: async ({ functionId, difficultyLevel }) =&gt; {
+      const supabase = await createClient()
+
+      const { data, error } = await supabase
+        .from(&#x27;function_modules&#x27;)
+        .update({ difficulty_level: difficultyLevel })
+        .eq(&#x27;id&#x27;, functionId)
+        .eq(&#x27;project_id&#x27;, projectId)
+        .select()
+        .single()
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      const difficultyLabels: Record&lt;string, string&gt; = {
+        simple: &#x27;简单&#x27;,
+        medium: &#x27;中等&#x27;,
+        complex: &#x27;复杂&#x27;,
+        very_complex: &#x27;非常复杂&#x27;,
+      }
+
+      return { success: true, message: `难度已更新为 ${difficultyLabels[difficultyLevel]}`, data }
+    },
+  })
+
+  const deleteFunctionModule = tool({
+    description: &#x27;删除指定的功能模块。当用户决定移除某个功能时使用。&#x27;,
+    inputSchema: z.object({
+      functionId: z.string().describe(&#x27;要删除的功能模块ID&#x27;),
+    }),
+    execute: async ({ functionId }) =&gt; {
+      const supabase = await createClient()
+
+      // 先获取功能名称用于返回消息
+      const { data: fn } = await supabase
+        .from(&#x27;function_modules&#x27;)
+        .select(&#x27;function_name&#x27;)
+        .eq(&#x27;id&#x27;, functionId)
+        .eq(&#x27;project_id&#x27;, projectId)
+        .single()
+
+      const { error } = await supabase
+        .from(&#x27;function_modules&#x27;)
+        .delete()
+        .eq(&#x27;id&#x27;, functionId)
+        .eq(&#x27;project_id&#x27;, projectId)
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return { success: true, message: `功能模块 &quot;${fn?.function_name || functionId}&quot; 已删除` }
+    },
+  })
+
+  const addFromLibrary = tool({
+    description: &#x27;从标准功能库中添加功能到项目。可以使用功能库中的标准工时或自定义工时。&#x27;,
+    inputSchema: z.object({
+      libraryItemId: z.string().describe(&#x27;功能库项目ID&#x27;),
+      customHours: z.number().optional().describe(&#x27;自定义工时（可选，不填则使用标准工时）&#x27;),
+      customDifficulty: z.enum([&#x27;simple&#x27;, &#x27;medium&#x27;, &#x27;complex&#x27;, &#x27;very_complex&#x27;]).optional().describe(&#x27;自定义难度（可选）&#x27;),
+    }),
+    execute: async ({ libraryItemId, customHours, customDifficulty }) =&gt; {
+      const supabase = await createClient()
+
+      // 获取功能库项目
+      const { data: libraryItem } = await supabase
+        .from(&#x27;function_library&#x27;)
+        .select(&#x27;*&#x27;)
+        .eq(&#x27;id&#x27;, libraryItemId)
+        .single()
+
+      if (!libraryItem) {
+        return { success: false, error: &#x27;功能库项目不存在&#x27; }
+      }
+
+      // 添加到项目
+      const { data, error } = await supabase
+        .from(&#x27;function_modules&#x27;)
+        .insert({
+          project_id: projectId,
+          module_name: libraryItem.category,
+          function_name: libraryItem.function_name,
+          description: libraryItem.description,
+          difficulty_level: customDifficulty || &#x27;medium&#x27;,
+          estimated_hours: customHours ?? libraryItem.standard_hours,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return { success: true, message: `已从功能库添加 &quot;${libraryItem.function_name}&quot;`, data }
+    },
+  })
+
+  // ==================== 成本估算工具 ====================
+
+  const updateCostParameters = tool({
+    description: &#x27;更新成本估算的计算参数，如风险缓冲比例、服务成本、基础设施成本等。&#x27;,
+    inputSchema: z.object({
+      bufferPercentage: z.number().optional().describe(&#x27;风险缓冲比例（%），如 15 表示 15%&#x27;),
+      serviceCost: z.number().optional().describe(&#x27;第三方服务成本（元）&#x27;),
+      infrastructureCost: z.number().optional().describe(&#x27;基础设施成本（元）&#x27;),
+    }),
+    execute: async (params) =&gt; {
+      const supabase = await createClient()
+
+      // 获取现有成本估算
+      const { data: existingCost } = await supabase
+        .from(&#x27;cost_estimates&#x27;)
+        .select(&#x27;*&#x27;)
+        .eq(&#x27;project_id&#x27;, projectId)
+        .order(&#x27;created_at&#x27;, { ascending: false })
+        .limit(1)
+        .single()
+
+      const updateData: Record&lt;string, number&gt; = {}
+
+      if (params.serviceCost !== undefined) {
+        updateData.service_cost = params.serviceCost
+      }
+      if (params.infrastructureCost !== undefined) {
+        updateData.infrastructure_cost = params.infrastructureCost
+      }
+      if (params.bufferPercentage !== undefined) {
+        updateData.buffer_percentage = params.bufferPercentage
+      }
+
+      if (existingCost) {
+        // 更新现有记录
+        const { error } = await supabase
+          .from(&#x27;cost_estimates&#x27;)
+          .update(updateData)
+          .eq(&#x27;id&#x27;, existingCost.id)
+
+        if (error) {
+          return { success: false, error: error.message }
+        }
+      } else {
+        // 创建新记录
+        const { error } = await supabase
+          .from(&#x27;cost_estimates&#x27;)
+          .insert({
+            project_id: projectId,
+            labor_cost: 0,
+            service_cost: params.serviceCost || 0,
+            infrastructure_cost: params.infrastructureCost || 0,
+            buffer_percentage: params.bufferPercentage || 15,
+            total_cost: 0,
+            breakdown: {},
+          })
+
+        if (error) {
+          return { success: false, error: error.message }
+        }
+      }
+
+      return { success: true, message: &#x27;成本参数已更新&#x27; }
+    },
+  })
+
+  const recalculateCost = tool({
+    description: &#x27;基于当前的功能模块列表重新计算项目总成本。在添加或修改功能后调用此工具更新成本。使用加权工时计算（根据难度级别应用不同倍数）。可选参数允许用户自定义成本配置，未指定时从系统配置读取。&#x27;,
+    inputSchema: z.object({
+      laborCostPerDay: z.number().optional().describe(&#x27;人天成本（元），不指定则使用系统配置&#x27;),
+      riskBufferPercentage: z.number().optional().describe(&#x27;风险缓冲比例（%），不指定则使用系统配置&#x27;),
+      serviceCost: z.number().optional().describe(&#x27;第三方服务成本（元），不指定则使用现有值&#x27;),
+      infrastructureCost: z.number().optional().describe(&#x27;基础设施成本（元），不指定则使用现有值&#x27;),
+    }),
+    execute: async (params) =&gt; {
+      const supabase = await createClient()
+
+      // 获取所有功能模块
+      const { data: functions } = await supabase
+        .from(&#x27;function_modules&#x27;)
+        .select(&#x27;estimated_hours, difficulty_level&#x27;)
+        .eq(&#x27;project_id&#x27;, projectId)
+
+      if (!functions || functions.length === 0) {
+        return { success: false, error: &#x27;没有功能模块，无法计算成本&#x27; }
+      }
+
+      // 获取系统配置（仅当用户未指定参数时使用）
+      const { data: config } = await supabase
+        .from(&#x27;system_config&#x27;)
+        .select(&#x27;*&#x27;)
+        .limit(1)
+        .single()
+
+      // 获取现有成本估算
+      const { data: existingCost } = await supabase
+        .from(&#x27;cost_estimates&#x27;)
+        .select(&#x27;service_cost, infrastructure_cost, buffer_percentage, breakdown&#x27;)
+        .eq(&#x27;project_id&#x27;, projectId)
+        .order(&#x27;created_at&#x27;, { ascending: false })
+        .limit(1)
+        .single()
+
+      // 确定最终使用的配置值（优先级：用户指定 &gt; 现有值 &gt; 系统配置 &gt; 默认值）
+      const laborCostPerDay = params.laborCostPerDay
+        ?? config?.default_labor_cost_per_day
+        ?? 1500
+      const bufferPercentage = params.riskBufferPercentage
+        ?? existingCost?.buffer_percentage
+        ?? config?.default_risk_buffer_percentage
+        ?? 15
+      const serviceCost = params.serviceCost
+        ?? existingCost?.service_cost
+        ?? 0
+      const infrastructureCost = params.infrastructureCost
+        ?? existingCost?.infrastructure_cost
+        ?? 0
+      const workingHoursPerDay = 8
+
+      // 计算总工时
+      let totalHours = 0
+      for (const fn of functions) {
+        totalHours += Number(fn.estimated_hours)
+      }
+
+      // 计算人天数
+      const totalDays = Math.round((totalHours / workingHoursPerDay) * 10) / 10
+
+      // 计算人力成本
+      const laborCost = Math.round(totalDays * laborCostPerDay)
+
+      // 计算总成本（含缓冲）
+      const baseCost = laborCost + serviceCost + infrastructureCost
+      const buffer = Math.round(baseCost * (bufferPercentage / 100))
+      const totalCost = baseCost + buffer
+
+      // 更新或创建成本估算
+      const costData = {
+        project_id: projectId,
+        labor_cost: laborCost,
+        service_cost: serviceCost,
+        infrastructure_cost: infrastructureCost,
+        buffer_percentage: bufferPercentage,
+        total_cost: totalCost,
+        breakdown: {
+          totalHours,
+          totalDays,
+          laborCostPerDay,
+          buffer,
+        },
+      }
+
+      if (existingCost) {
+        await supabase
+          .from(&#x27;cost_estimates&#x27;)
+          .update(costData)
+          .eq(&#x27;project_id&#x27;, projectId)
+      } else {
+        await supabase
+          .from(&#x27;cost_estimates&#x27;)
+          .insert(costData)
+      }
+
+      return {
+        success: true,
+        message: &#x27;成本已重新计算&#x27;,
+        data: {
+          totalHours,
+          totalDays,
+          laborCostPerDay,
+          laborCost,
+          serviceCost,
+          infrastructureCost,
+          bufferPercentage,
+          buffer,
+          totalCost,
+        },
+      }
+    },
+  })
+
+  // ==================== 项目信息工具 ====================
+
+  const updateProjectDescription = tool({
+    description: &#x27;更新项目的描述信息。&#x27;,
+    inputSchema: z.object({
+      description: z.string().describe(&#x27;新的项目描述&#x27;),
+    }),
+    execute: async ({ description }) =&gt; {
+      const supabase = await createClient()
+
+      const { error } = await supabase
+        .from(&#x27;projects&#x27;)
+        .update({ description: description.trim() })
+        .eq(&#x27;id&#x27;, projectId)
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return { success: true, message: &#x27;项目描述已更新&#x27; }
+    },
+  })
+
+  const updateProjectIndustry = tool({
+    description: &#x27;更新项目所属行业。&#x27;,
+    inputSchema: z.object({
+      industry: z.string().describe(&#x27;行业名称，如：金融、电商、教育、医疗、制造等&#x27;),
+    }),
+    execute: async ({ industry }) =&gt; {
+      const supabase = await createClient()
+
+      const { error } = await supabase
+        .from(&#x27;projects&#x27;)
+        .update({ industry: industry.trim() })
+        .eq(&#x27;id&#x27;, projectId)
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return { success: true, message: `项目行业已更新为 &quot;${industry}&quot;` }
+    },
+  })
+
+  // ==================== 查询工具 ====================
+
+  const getFunctionModules = tool({
+    description: &#x27;获取当前项目的所有功能模块列表。用于查看当前已添加的功能和工时。&#x27;,
+    inputSchema: z.object({}),
+    execute: async () =&gt; {
+      const supabase = await createClient()
+
+      const { data, error } = await supabase
+        .from(&#x27;function_modules&#x27;)
+        .select(&#x27;*&#x27;)
+        .eq(&#x27;project_id&#x27;, projectId)
+        .order(&#x27;module_name&#x27;, { ascending: true })
+        .order(&#x27;function_name&#x27;, { ascending: true })
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      const totalHours = data?.reduce((sum, f) =&gt; sum + Number(f.estimated_hours), 0) || 0
+
+      return {
+        success: true,
+        data: {
+          modules: data || [],
+          count: data?.length || 0,
+          totalHours,
+        },
+      }
+    },
+  })
+
+  const getCostSummary = tool({
+    description: &#x27;获取当前项目的成本估算汇总信息。&#x27;,
+    inputSchema: z.object({}),
+    execute: async () =&gt; {
+      const supabase = await createClient()
+
+      const { data: cost } = await supabase
+        .from(&#x27;cost_estimates&#x27;)
+        .select(&#x27;*&#x27;)
+        .eq(&#x27;project_id&#x27;, projectId)
+        .order(&#x27;created_at&#x27;, { ascending: false })
+        .limit(1)
+        .single()
+
+      if (!cost) {
+        return { success: true, data: null, message: &#x27;暂无成本估算数据&#x27; }
+      }
+
+      return {
+        success: true,
+        data: {
+          laborCost: cost.labor_cost,
+          serviceCost: cost.service_cost,
+          infrastructureCost: cost.infrastructure_cost,
+          bufferPercentage: cost.buffer_percentage,
+          totalCost: cost.total_cost,
+          breakdown: cost.breakdown,
+        },
+      }
+    },
+  })
+
+  const searchFunctionLibrary = tool({
+    description: &#x27;搜索标准功能库，查找可复用的功能模块及其标准工时。帮助用户找到已有的标准功能估算。&#x27;,
+    inputSchema: z.object({
+      keyword: z.string().describe(&#x27;搜索关键词&#x27;),
+      category: z.string().optional().describe(&#x27;功能分类（可选）&#x27;),
+    }),
+    execute: async ({ keyword, category }) =&gt; {
+      const supabase = await createClient()
+
+      let query = supabase
+        .from(&#x27;function_library&#x27;)
+        .select(&#x27;*&#x27;)
+        .ilike(&#x27;function_name&#x27;, `%${keyword}%`)
+        .order(&#x27;category&#x27;, { ascending: true })
+        .limit(10)
+
+      if (category) {
+        query = query.eq(&#x27;category&#x27;, category)
+      }
+
+      const { data, error } = await query
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return {
+        success: true,
+        data: data || [],
+        count: data?.length || 0,
+      }
+    },
+  })
+
+  const getProjectSummary = tool({
+    description: &#x27;获取项目的整体汇总信息，包括功能模块数、总工时、成本等。用于给用户展示项目全貌。&#x27;,
+    inputSchema: z.object({}),
+    execute: async () =&gt; {
+      const supabase = await createClient()
+
+      // 获取项目基本信息
+      const { data: project } = await supabase
+        .from(&#x27;projects&#x27;)
+        .select(&#x27;name, description, industry, status&#x27;)
+        .eq(&#x27;id&#x27;, projectId)
+        .single()
+
+      // 获取功能模块统计
+      const { data: functions } = await supabase
+        .from(&#x27;function_modules&#x27;)
+        .select(&#x27;estimated_hours, difficulty_level&#x27;)
+        .eq(&#x27;project_id&#x27;, projectId)
+
+      // 获取成本估算
+      const { data: cost } = await supabase
+        .from(&#x27;cost_estimates&#x27;)
+        .select(&#x27;total_cost, labor_cost, buffer_percentage&#x27;)
+        .eq(&#x27;project_id&#x27;, projectId)
+        .order(&#x27;created_at&#x27;, { ascending: false })
+        .limit(1)
+        .single()
+
+      let totalHours = 0
+      functions?.forEach(f =&gt; {
+        totalHours += Number(f.estimated_hours)
+      })
+
+      return {
+        success: true,
+        data: {
+          project: project || null,
+          totalModules: functions?.length || 0,
+          totalHours,
+          totalDays: Math.round((totalHours / 8) * 10) / 10,
+          totalCost: cost?.total_cost || 0,
+          laborCost: cost?.labor_cost || 0,
+          bufferPercentage: cost?.buffer_percentage || 15,
+        },
+      }
+    },
+  })
+
+  const getSystemConfig = tool({
+    description: &#x27;获取系统成本配置信息，包括人天成本、默认风险缓冲比例、货币单位等。这是成本估算的核心配置数据源，在进行成本计算或向用户解释成本时应先调用此工具获取最新配置。&#x27;,
+    inputSchema: z.object({}),
+    execute: async () =&gt; {
+      const supabase = await createClient()
+
+      const { data: config, error } = await supabase
+        .from(&#x27;system_config&#x27;)
+        .select(&#x27;*&#x27;)
+        .limit(1)
+        .single()
+
+      // 默认配置
+      const defaultConfig = {
+        laborCostPerDay: 1500,
+        riskBufferPercentage: 15,
+        currency: &#x27;CNY&#x27;,
+        workingHoursPerDay: 8,
+      }
+
+      if (error || !config) {
+        return {
+          success: true,
+          message: &#x27;使用默认配置&#x27;,
+          data: defaultConfig,
+        }
+      }
+
+      return {
+        success: true,
+        data: {
+          laborCostPerDay: config.default_labor_cost_per_day || defaultConfig.laborCostPerDay,
+          riskBufferPercentage: config.default_risk_buffer_percentage || defaultConfig.riskBufferPercentage,
+          currency: config.currency || defaultConfig.currency,
+          workingHoursPerDay: defaultConfig.workingHoursPerDay,
+        },
+      }
+    },
+  })
+
+  // 返回所有工具
+  return {
+    // 需求管理
+    updateRequirement,
+    appendRequirement,
+    updateParsedRequirement,
+
+    // 功能模块
+    addFunctionModule,
+    addFunctionModulesBatch,
+    updateFunctionHours,
+    updateFunctionDifficulty,
+    deleteFunctionModule,
+    addFromLibrary,
+
+    // 成本估算
+    updateCostParameters,
+    recalculateCost,
+
+    // 项目信息
+    updateProjectDescription,
+    updateProjectIndustry,
+
+    // 查询工具
+    getFunctionModules,
+    getCostSummary,
+    searchFunctionLibrary,
+    getProjectSummary,
+    getSystemConfig,
+  }
+}
+
+export type ChatTools = ReturnType&lt;typeof createChatTools&gt;
+export type ChatToolName = keyof ChatTools
+</pre>
+            </section>
+            
+            <section class="file-section page-break">
+              <h2>10. lib/git/parser.ts</h2>
+              <p class="meta">文件类型：源码文件 | 行数：399</p>
+              <pre>/**
+ * Git 仓库解析工具
+ *
+ * 支持解析 GitHub、GitLab（含自托管）、Gitee 等平台的仓库 URL
+ * 获取仓库的基本信息、README、package.json 等文件内容
+ */
+
+export type GitPlatform = &#x27;github&#x27; | &#x27;gitlab&#x27; | &#x27;gitee&#x27; | &#x27;unknown&#x27;
+
+export interface ParsedGitUrl {
+  platform: GitPlatform
+  host: string // 主机地址，如 github.com 或 172.26.1.194
+  owner: string
+  repo: string
+  branch?: string
+  rawUrl: string
+}
+
+export interface RepoInfo {
+  name: string
+  description: string | null
+  language: string | null
+  topics: string[]
+  stars: number
+  defaultBranch: string
+}
+
+export interface RepoFiles {
+  readme: string | null
+  packageJson: Record&lt;string, unknown&gt; | null
+  pomXml: string | null
+}
+
+export interface GitRepoData {
+  url: string
+  platform: GitPlatform
+  info: RepoInfo | null
+  files: RepoFiles
+  error?: string
+}
+
+/**
+ * 解析 Git 仓库 URL
+ */
+export function parseGitUrl(url: string): ParsedGitUrl | null {
+  const trimmedUrl = url.trim()
+
+  // GitHub: https://github.com/owner/repo or git@github.com:owner/repo.git
+  const githubHttps = /^https?:\/\/github\.com\/([^\/]+)\/([^\/\s#?]+)/
+  const githubSsh = /^git@github\.com:([^\/]+)\/([^\/\s]+?)(?:\.git)?$/
+
+  // GitLab 官方: https://gitlab.com/owner/repo
+  const gitlabHttps = /^https?:\/\/gitlab\.com\/([^\/]+)\/([^\/\s#?]+)/
+  const gitlabSsh = /^git@gitlab\.com:([^\/]+)\/([^\/\s]+?)(?:\.git)?$/
+
+  // Gitee: https://gitee.com/owner/repo
+  const giteeHttps = /^https?:\/\/gitee\.com\/([^\/]+)\/([^\/\s#?]+)/
+  const giteeSsh = /^git@gitee\.com:([^\/]+)\/([^\/\s]+?)(?:\.git)?$/
+
+  // 通用 HTTP(S) URL: https://host/owner/repo
+  const genericHttps = /^(https?):\/\/([^\/]+)\/([^\/]+)\/([^\/\s#?]+)/
+
+  let match: RegExpMatchArray | null
+  let platform: GitPlatform = &#x27;unknown&#x27;
+  let host = &#x27;&#x27;
+  let owner = &#x27;&#x27;
+  let repo = &#x27;&#x27;
+
+  if ((match = trimmedUrl.match(githubHttps)) || (match = trimmedUrl.match(githubSsh))) {
+    platform = &#x27;github&#x27;
+    host = &#x27;github.com&#x27;
+    owner = match[1]
+    repo = match[2].replace(/\.git$/, &#x27;&#x27;)
+  } else if ((match = trimmedUrl.match(gitlabHttps)) || (match = trimmedUrl.match(gitlabSsh))) {
+    platform = &#x27;gitlab&#x27;
+    host = &#x27;gitlab.com&#x27;
+    owner = match[1]
+    repo = match[2].replace(/\.git$/, &#x27;&#x27;)
+  } else if ((match = trimmedUrl.match(giteeHttps)) || (match = trimmedUrl.match(giteeSsh))) {
+    platform = &#x27;gitee&#x27;
+    host = &#x27;gitee.com&#x27;
+    owner = match[1]
+    repo = match[2].replace(/\.git$/, &#x27;&#x27;)
+  } else if ((match = trimmedUrl.match(genericHttps))) {
+    // 对于其他 HTTP(S) URL，尝试作为 GitLab 实例处理
+    platform = &#x27;gitlab&#x27;
+    host = match[2]
+    owner = match[3]
+    repo = match[4].replace(/\.git$/, &#x27;&#x27;)
+  }
+
+  if (platform === &#x27;unknown&#x27; || !owner || !repo) {
+    return null
+  }
+
+  return {
+    platform,
+    host,
+    owner,
+    repo,
+    rawUrl: trimmedUrl,
+  }
+}
+
+/**
+ * 获取 GitHub 仓库信息
+ */
+async function fetchGitHubRepo(owner: string, repo: string): Promise&lt;{ info: RepoInfo | null; files: RepoFiles }&gt; {
+  const files: RepoFiles = {
+    readme: null,
+    packageJson: null,
+    pomXml: null,
+  }
+
+  let info: RepoInfo | null = null
+
+  try {
+    // 获取仓库基本信息
+    const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers: {
+        &#x27;Accept&#x27;: &#x27;application/vnd.github.v3+json&#x27;,
+        &#x27;User-Agent&#x27;: &#x27;presales-agent&#x27;,
+      },
+    })
+
+    if (repoRes.ok) {
+      const repoData = await repoRes.json()
+      info = {
+        name: repoData.name,
+        description: repoData.description,
+        language: repoData.language,
+        topics: repoData.topics || [],
+        stars: repoData.stargazers_count,
+        defaultBranch: repoData.default_branch,
+      }
+    }
+  } catch (e) {
+    console.error(&#x27;[GitParser] 获取 GitHub 仓库信息失败:&#x27;, e)
+  }
+
+  const branch = info?.defaultBranch || &#x27;main&#x27;
+
+  // 并行获取文件内容
+  const [readmeRes, packageRes, pomRes] = await Promise.allSettled([
+    fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/README.md`),
+    fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/package.json`),
+    fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/pom.xml`),
+  ])
+
+  if (readmeRes.status === &#x27;fulfilled&#x27; &amp;&amp; readmeRes.value.ok) {
+    files.readme = await readmeRes.value.text()
+  }
+
+  if (packageRes.status === &#x27;fulfilled&#x27; &amp;&amp; packageRes.value.ok) {
+    try {
+      files.packageJson = await packageRes.value.json()
+    } catch {
+      // 忽略 JSON 解析错误
+    }
+  }
+
+  if (pomRes.status === &#x27;fulfilled&#x27; &amp;&amp; pomRes.value.ok) {
+    files.pomXml = await pomRes.value.text()
+  }
+
+  return { info, files }
+}
+
+/**
+ * 获取 GitLab 仓库信息（支持自托管实例和私有仓库）
+ */
+async function fetchGitLabRepo(
+  host: string,
+  owner: string,
+  repo: string,
+  token?: string
+): Promise&lt;{ info: RepoInfo | null; files: RepoFiles }&gt; {
+  const files: RepoFiles = {
+    readme: null,
+    packageJson: null,
+    pomXml: null,
+  }
+
+  let info: RepoInfo | null = null
+  const projectPath = encodeURIComponent(`${owner}/${repo}`)
+
+  // 确定协议：对于 IP 地址或内网域名，可能需要 http
+  const isLocalHost = /^(localhost|127\.|192\.|172\.|10\.)/.test(host) || /^\d+\.\d+\.\d+\.\d+/.test(host)
+  const protocol = isLocalHost ? &#x27;http&#x27; : &#x27;https&#x27;
+  const baseUrl = `${protocol}://${host}`
+
+  // 构建请求头，私有仓库需要 Token
+  const headers: Record&lt;string, string&gt; = {
+    &#x27;Accept&#x27;: &#x27;application/json&#x27;,
+  }
+  if (token) {
+    headers[&#x27;PRIVATE-TOKEN&#x27;] = token
+  }
+
+  try {
+    const repoRes = await fetch(`${baseUrl}/api/v4/projects/${projectPath}`, {
+      headers,
+    })
+
+    if (repoRes.ok) {
+      const repoData = await repoRes.json()
+      info = {
+        name: repoData.name,
+        description: repoData.description,
+        language: null, // GitLab API 需要单独调用获取语言
+        topics: repoData.topics || [],
+        stars: repoData.star_count,
+        defaultBranch: repoData.default_branch,
+      }
+    }
+  } catch (e) {
+    console.error(&#x27;[GitParser] 获取 GitLab 仓库信息失败:&#x27;, e)
+  }
+
+  const branch = info?.defaultBranch || &#x27;main&#x27;
+
+  // 获取文件内容（私有仓库需要 Token）
+  const fileHeaders: Record&lt;string, string&gt; = {}
+  if (token) {
+    fileHeaders[&#x27;PRIVATE-TOKEN&#x27;] = token
+  }
+
+  const [readmeRes, packageRes, pomRes] = await Promise.allSettled([
+    fetch(`${baseUrl}/${owner}/${repo}/-/raw/${branch}/README.md`, { headers: fileHeaders }),
+    fetch(`${baseUrl}/${owner}/${repo}/-/raw/${branch}/package.json`, { headers: fileHeaders }),
+    fetch(`${baseUrl}/${owner}/${repo}/-/raw/${branch}/pom.xml`, { headers: fileHeaders }),
+  ])
+
+  if (readmeRes.status === &#x27;fulfilled&#x27; &amp;&amp; readmeRes.value.ok) {
+    files.readme = await readmeRes.value.text()
+  }
+
+  if (packageRes.status === &#x27;fulfilled&#x27; &amp;&amp; packageRes.value.ok) {
+    try {
+      files.packageJson = await packageRes.value.json()
+    } catch {
+      // 忽略 JSON 解析错误
+    }
+  }
+
+  if (pomRes.status === &#x27;fulfilled&#x27; &amp;&amp; pomRes.value.ok) {
+    files.pomXml = await pomRes.value.text()
+  }
+
+  return { info, files }
+}
+
+/**
+ * 获取 Gitee 仓库信息
+ */
+async function fetchGiteeRepo(owner: string, repo: string): Promise&lt;{ info: RepoInfo | null; files: RepoFiles }&gt; {
+  const files: RepoFiles = {
+    readme: null,
+    packageJson: null,
+    pomXml: null,
+  }
+
+  let info: RepoInfo | null = null
+
+  try {
+    const repoRes = await fetch(`https://gitee.com/api/v5/repos/${owner}/${repo}`, {
+      headers: {
+        &#x27;Accept&#x27;: &#x27;application/json&#x27;,
+      },
+    })
+
+    if (repoRes.ok) {
+      const repoData = await repoRes.json()
+      info = {
+        name: repoData.name,
+        description: repoData.description,
+        language: repoData.language,
+        topics: [],
+        stars: repoData.stargazers_count,
+        defaultBranch: repoData.default_branch,
+      }
+    }
+  } catch (e) {
+    console.error(&#x27;[GitParser] 获取 Gitee 仓库信息失败:&#x27;, e)
+  }
+
+  const branch = info?.defaultBranch || &#x27;master&#x27;
+
+  // 获取文件内容
+  const [readmeRes, packageRes, pomRes] = await Promise.allSettled([
+    fetch(`https://gitee.com/${owner}/${repo}/raw/${branch}/README.md`),
+    fetch(`https://gitee.com/${owner}/${repo}/raw/${branch}/package.json`),
+    fetch(`https://gitee.com/${owner}/${repo}/raw/${branch}/pom.xml`),
+  ])
+
+  if (readmeRes.status === &#x27;fulfilled&#x27; &amp;&amp; readmeRes.value.ok) {
+    files.readme = await readmeRes.value.text()
+  }
+
+  if (packageRes.status === &#x27;fulfilled&#x27; &amp;&amp; packageRes.value.ok) {
+    try {
+      files.packageJson = await packageRes.value.json()
+    } catch {
+      // 忽略 JSON 解析错误
+    }
+  }
+
+  if (pomRes.status === &#x27;fulfilled&#x27; &amp;&amp; pomRes.value.ok) {
+    files.pomXml = await pomRes.value.text()
+  }
+
+  return { info, files }
+}
+
+export interface FetchOptions {
+  /** GitLab/GitHub Personal Access Token（用于私有仓库） */
+  token?: string
+}
+
+/**
+ * 获取 Git 仓库数据
+ *
+ * @param url - Git 仓库 URL
+ * @param options - 可选配置，如 token 用于私有仓库授权
+ */
+export async function fetchGitRepoData(url: string, options?: FetchOptions): Promise&lt;GitRepoData&gt; {
+  const parsed = parseGitUrl(url)
+
+  if (!parsed) {
+    return {
+      url,
+      platform: &#x27;unknown&#x27;,
+      info: null,
+      files: {
+        readme: null,
+        packageJson: null,
+        pomXml: null,
+      },
+      error: &#x27;无法解析 Git 仓库地址，请检查 URL 格式是否正确&#x27;,
+    }
+  }
+
+  const { platform, host, owner, repo } = parsed
+  const { token } = options || {}
+
+  let result: { info: RepoInfo | null; files: RepoFiles }
+
+  switch (platform) {
+    case &#x27;github&#x27;:
+      result = await fetchGitHubRepo(owner, repo)
+      break
+    case &#x27;gitlab&#x27;:
+      result = await fetchGitLabRepo(host, owner, repo, token)
+      break
+    case &#x27;gitee&#x27;:
+      result = await fetchGiteeRepo(owner, repo)
+      break
+    default:
+      return {
+        url,
+        platform,
+        info: null,
+        files: {
+          readme: null,
+          packageJson: null,
+          pomXml: null,
+        },
+        error: &#x27;暂不支持该平台&#x27;,
+      }
+  }
+
+  // 如果没有获取到任何信息，返回错误
+  if (!result.info &amp;&amp; !result.files.readme &amp;&amp; !result.files.packageJson &amp;&amp; !result.files.pomXml) {
+    // 根据平台给出更具体的错误提示
+    let errorMsg = &#x27;无法获取仓库信息，请确认仓库地址正确&#x27;
+    if (platform === &#x27;gitlab&#x27; &amp;&amp; !token) {
+      errorMsg += &#x27;。如为私有仓库，请提供 GitLab Access Token&#x27;
+    } else if (platform === &#x27;gitlab&#x27; &amp;&amp; token) {
+      errorMsg += &#x27;。请检查 Token 是否有效且具有 read_repository 权限&#x27;
+    } else {
+      errorMsg += &#x27;且为公开仓库&#x27;
+    }
+
+    return {
+      url,
+      platform,
+      info: null,
+      files: result.files,
+      error: errorMsg,
+    }
+  }
+
+  return {
+    url,
+    platform,
+    info: result.info,
+    files: result.files,
+  }
+}
+</pre>
+            </section>
+            
+            <section class="file-section page-break">
+              <h2>11. lib/git/prescan.ts</h2>
+              <p class="meta">文件类型：源码文件 | 行数：507</p>
+              <pre>import type { GitToolContext } from &#x27;./tools&#x27;
+
+export type PrescanConfidence = &#x27;low&#x27; | &#x27;medium&#x27; | &#x27;high&#x27;
+
+export interface PrescanMetrics {
+  fileCountEstimate: number
+  dirCountEstimate: number
+  maxDepthEstimate: number
+  sampleSize: number
+  requestCount: number
+  rootSignalCount: number
+}
+
+export interface PrescanResult {
+  maxSteps: number
+  confidence: PrescanConfidence
+  partial: boolean
+  reason: string
+  metrics: PrescanMetrics
+  compressedTreeCsv: string
+  compressedTreeRows: number
+  compressedTreeBytes: number
+}
+
+interface ScanBudget {
+  startAt: number
+  deadlineMs: number
+  maxRequests: number
+  requestCount: number
+  partial: boolean
+  reasons: Set&lt;string&gt;
+}
+
+interface MetricAccumulator {
+  fileCount: number
+  dirCount: number
+  maxDepth: number
+  sampleSize: number
+  rootSignalCount: number
+}
+
+interface TreeEntry {
+  type: string
+  path: string
+}
+
+const DEFAULT_STEPS = 16
+const GITHUB_DEADLINE_MS = 2500
+const GITHUB_MAX_REQUESTS = 4
+const GITLAB_DEADLINE_MS = 12000
+const GITLAB_MAX_REQUESTS = 120
+const GITLAB_MAX_PAGES = 100
+const ROOT_SIGNAL_DIRS = new Set([
+  &#x27;apps&#x27;,
+  &#x27;services&#x27;,
+  &#x27;modules&#x27;,
+  &#x27;packages&#x27;,
+  &#x27;backend&#x27;,
+  &#x27;frontend&#x27;,
+  &#x27;src&#x27;,
+])
+
+function createAccumulator(): MetricAccumulator {
+  return {
+    fileCount: 0,
+    dirCount: 0,
+    maxDepth: 0,
+    sampleSize: 0,
+    rootSignalCount: 0,
+  }
+}
+
+function isRecord(value: unknown): value is Record&lt;string, unknown&gt; {
+  return typeof value === &#x27;object&#x27; &amp;&amp; value !== null
+}
+
+function toLowerString(value: unknown): string {
+  return typeof value === &#x27;string&#x27; ? value.toLowerCase() : &#x27;&#x27;
+}
+
+function markPartial(budget: ScanBudget, reason: string) {
+  budget.partial = true
+  budget.reasons.add(reason)
+}
+
+function remainingMs(budget: ScanBudget): number {
+  return budget.deadlineMs - (Date.now() - budget.startAt)
+}
+
+function mapStatusReason(status: number): string {
+  if (status === 401 || status === 403) return &#x27;unauthorized&#x27;
+  if (status === 404) return &#x27;not-found&#x27;
+  if (status === 429) return &#x27;rate-limited&#x27;
+  if (status &gt;= 500) return &#x27;upstream-5xx&#x27;
+  return `upstream-${status}`
+}
+
+async function fetchWithBudget(
+  budget: ScanBudget,
+  url: string,
+  init: RequestInit
+): Promise&lt;Response | null&gt; {
+  if (budget.requestCount &gt;= budget.maxRequests) {
+    markPartial(budget, &#x27;request-budget-exhausted&#x27;)
+    return null
+  }
+
+  const remaining = remainingMs(budget)
+  if (remaining &lt;= 0) {
+    markPartial(budget, &#x27;deadline-exceeded&#x27;)
+    return null
+  }
+
+  budget.requestCount += 1
+
+  const timeoutMs = Math.max(250, Math.min(remaining, 1200))
+  const controller = new AbortController()
+  const timer = setTimeout(() =&gt; controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (error) {
+    if (error instanceof DOMException &amp;&amp; error.name === &#x27;AbortError&#x27;) {
+      markPartial(budget, &#x27;request-timeout&#x27;)
+    } else {
+      markPartial(budget, &#x27;network-error&#x27;)
+    }
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function countDepth(path: unknown): number {
+  if (typeof path !== &#x27;string&#x27; || path.length === 0) return 0
+  return path.split(&#x27;/&#x27;).length
+}
+
+function toConfidence(sampleSize: number, usedRecursiveData: boolean, partial: boolean): PrescanConfidence {
+  let confidence: PrescanConfidence
+  if (usedRecursiveData &amp;&amp; sampleSize &gt;= 120) confidence = &#x27;high&#x27;
+  else if (usedRecursiveData || sampleSize &gt;= 60) confidence = &#x27;medium&#x27;
+  else confidence = &#x27;low&#x27;
+
+  if (!partial) return confidence
+  if (confidence === &#x27;high&#x27;) return &#x27;medium&#x27;
+  if (confidence === &#x27;medium&#x27;) return &#x27;low&#x27;
+  return &#x27;low&#x27;
+}
+
+function resolveSteps(metrics: MetricAccumulator, confidence: PrescanConfidence): number {
+  const score = (
+    Math.min(metrics.fileCount / 120, 5) +
+    Math.min(metrics.dirCount / 30, 3) +
+    Math.min(metrics.maxDepth / 6, 2) +
+    Math.min(metrics.rootSignalCount * 0.7, 2)
+  )
+
+  let steps: number
+  if (score &lt; 3.5) steps = 10
+  else if (score &lt; 6.5) steps = 16
+  else if (score &lt; 9.5) steps = 24
+  else steps = 32
+
+  if (confidence === &#x27;low&#x27;) {
+    return Math.min(steps + 2, 34)
+  }
+  return steps
+}
+
+function finalizeResult(
+  budget: ScanBudget,
+  metrics: MetricAccumulator,
+  usedRecursiveData: boolean,
+  entries: TreeEntry[]
+): PrescanResult {
+  const { csv, rows, bytes } = buildCompressedTreeCsv(entries)
+  const confidence = toConfidence(metrics.sampleSize, usedRecursiveData, budget.partial)
+  const maxSteps = resolveSteps(metrics, confidence)
+
+  return {
+    maxSteps,
+    confidence,
+    partial: budget.partial,
+    reason: budget.reasons.size &gt; 0 ? Array.from(budget.reasons).join(&#x27;,&#x27;) : &#x27;ok&#x27;,
+    metrics: {
+      fileCountEstimate: metrics.fileCount,
+      dirCountEstimate: metrics.dirCount,
+      maxDepthEstimate: metrics.maxDepth,
+      sampleSize: metrics.sampleSize,
+      requestCount: budget.requestCount,
+      rootSignalCount: metrics.rootSignalCount,
+    },
+    compressedTreeCsv: csv,
+    compressedTreeRows: rows,
+    compressedTreeBytes: bytes,
+  }
+}
+
+function applyRootSignal(metrics: MetricAccumulator, dirName: string) {
+  if (ROOT_SIGNAL_DIRS.has(dirName.toLowerCase())) {
+    metrics.rootSignalCount += 1
+  }
+}
+
+function toTypeCode(type: string): string {
+  if (type === &#x27;tree&#x27; || type === &#x27;dir&#x27;) return &#x27;D&#x27;
+  if (type === &#x27;blob&#x27; || type === &#x27;file&#x27;) return &#x27;F&#x27;
+  if (type === &#x27;commit&#x27;) return &#x27;S&#x27;
+  return &#x27;U&#x27;
+}
+
+function escapeCsv(value: string): string {
+  if (value.includes(&#x27;,&#x27;) || value.includes(&#x27;&quot;&#x27;) || value.includes(&#x27;\n&#x27;) || value.includes(&#x27;\r&#x27;)) {
+    return `&quot;${value.replaceAll(&#x27;&quot;&#x27;, &#x27;&quot;&quot;&#x27;)}&quot;`
+  }
+  return value
+}
+
+function buildCompressedTreeCsv(entries: TreeEntry[]): { csv: string; rows: number; bytes: number } {
+  const lines = [&#x27;t,d,p&#x27;]
+  for (const entry of entries) {
+    const typeCode = toTypeCode(entry.type)
+    const depth = countDepth(entry.path)
+    lines.push(`${typeCode},${depth},${escapeCsv(entry.path)}`)
+  }
+  const csv = lines.join(&#x27;\n&#x27;)
+  const bytes = new TextEncoder().encode(csv).length
+  return {
+    csv,
+    rows: entries.length,
+    bytes,
+  }
+}
+
+async function scanGitHub(context: GitToolContext, budget: ScanBudget): Promise&lt;PrescanResult&gt; {
+  const { owner, repo } = context.parsed
+  const metrics = createAccumulator()
+  const entries: TreeEntry[] = []
+  let usedRecursiveData = false
+  let defaultBranch = context.branch
+
+  const repoRes = await fetchWithBudget(
+    budget,
+    `https://api.github.com/repos/${owner}/${repo}`,
+    {
+      headers: {
+        Accept: &#x27;application/vnd.github.v3+json&#x27;,
+        &#x27;User-Agent&#x27;: &#x27;presales-agent&#x27;,
+      },
+    }
+  )
+  if (repoRes) {
+    if (repoRes.ok) {
+      const repoData: unknown = await repoRes.json()
+      if (isRecord(repoData) &amp;&amp; typeof repoData.default_branch === &#x27;string&#x27;) {
+        defaultBranch = repoData.default_branch
+      }
+    } else {
+      markPartial(budget, mapStatusReason(repoRes.status))
+    }
+  }
+
+  const refParam = context.branch ? `?ref=${encodeURIComponent(context.branch)}` : &#x27;&#x27;
+  const rootRes = await fetchWithBudget(
+    budget,
+    `https://api.github.com/repos/${owner}/${repo}/contents/${refParam}`,
+    {
+      headers: {
+        Accept: &#x27;application/vnd.github.v3+json&#x27;,
+        &#x27;User-Agent&#x27;: &#x27;presales-agent&#x27;,
+      },
+    }
+  )
+  if (rootRes) {
+    if (rootRes.ok) {
+      const rootData: unknown = await rootRes.json()
+      if (Array.isArray(rootData)) {
+        metrics.sampleSize += rootData.length
+        if (rootData.length &gt; 0) metrics.maxDepth = Math.max(metrics.maxDepth, 1)
+        for (const item of rootData) {
+          if (!isRecord(item)) continue
+          const itemType = toLowerString(item.type)
+          if (itemType === &#x27;file&#x27;) metrics.fileCount += 1
+          if (itemType === &#x27;dir&#x27;) {
+            metrics.dirCount += 1
+            applyRootSignal(metrics, typeof item.name === &#x27;string&#x27; ? item.name : &#x27;&#x27;)
+          }
+          if (typeof item.path === &#x27;string&#x27; &amp;&amp; item.path.length &gt; 0) {
+            entries.push({
+              type: itemType === &#x27;dir&#x27; ? &#x27;tree&#x27; : itemType,
+              path: item.path,
+            })
+          }
+        }
+      }
+    } else {
+      markPartial(budget, mapStatusReason(rootRes.status))
+    }
+  }
+
+  const recursiveRef = context.branch || defaultBranch || &#x27;HEAD&#x27;
+  const recursiveRes = await fetchWithBudget(
+    budget,
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(recursiveRef)}?recursive=1`,
+    {
+      headers: {
+        Accept: &#x27;application/vnd.github.v3+json&#x27;,
+        &#x27;User-Agent&#x27;: &#x27;presales-agent&#x27;,
+      },
+    }
+  )
+
+  if (recursiveRes) {
+    if (recursiveRes.ok) {
+      const treeData: unknown = await recursiveRes.json()
+      if (isRecord(treeData) &amp;&amp; Array.isArray(treeData.tree)) {
+        usedRecursiveData = true
+        metrics.fileCount = 0
+        metrics.dirCount = 0
+        metrics.maxDepth = 0
+        metrics.sampleSize = treeData.tree.length
+        entries.length = 0
+        for (const item of treeData.tree) {
+          if (!isRecord(item)) continue
+          const itemType = toLowerString(item.type)
+          if (itemType === &#x27;blob&#x27;) metrics.fileCount += 1
+          if (itemType === &#x27;tree&#x27;) metrics.dirCount += 1
+          const itemPath = typeof item.path === &#x27;string&#x27; ? item.path : &#x27;&#x27;
+          metrics.maxDepth = Math.max(metrics.maxDepth, countDepth(itemPath))
+          if (itemPath.length &gt; 0 &amp;&amp; (itemType === &#x27;blob&#x27; || itemType === &#x27;tree&#x27; || itemType === &#x27;commit&#x27;)) {
+            entries.push({ type: itemType, path: itemPath })
+          }
+        }
+        if (treeData.truncated === true) {
+          markPartial(budget, &#x27;github-tree-truncated&#x27;)
+        }
+      }
+    } else {
+      markPartial(budget, mapStatusReason(recursiveRes.status))
+    }
+  }
+
+  return finalizeResult(budget, metrics, usedRecursiveData, entries)
+}
+
+type GitLabTreeItem = {
+  type: &#x27;blob&#x27; | &#x27;tree&#x27;
+  name: string
+  path: string
+}
+
+function normalizeGitLabTree(data: unknown): GitLabTreeItem[] {
+  if (!Array.isArray(data)) return []
+  const normalized: GitLabTreeItem[] = []
+  for (const item of data) {
+    if (!isRecord(item)) continue
+    if (item.type !== &#x27;blob&#x27; &amp;&amp; item.type !== &#x27;tree&#x27;) continue
+    if (typeof item.name !== &#x27;string&#x27; || typeof item.path !== &#x27;string&#x27;) continue
+    normalized.push({ type: item.type, name: item.name, path: item.path })
+  }
+  return normalized
+}
+
+async function scanGitLab(context: GitToolContext, budget: ScanBudget): Promise&lt;PrescanResult&gt; {
+  const { baseUrl, headers, branch: specifiedBranch } = context
+  const { owner, repo } = context.parsed
+  const metrics = createAccumulator()
+  const entries: TreeEntry[] = []
+  let usedRecursiveData = false
+  let defaultBranch = specifiedBranch
+  const projectPath = encodeURIComponent(`${owner}/${repo}`)
+
+  const projectRes = await fetchWithBudget(
+    budget,
+    `${baseUrl}/api/v4/projects/${projectPath}`,
+    { headers }
+  )
+  if (projectRes) {
+    if (projectRes.ok) {
+      const projectData: unknown = await projectRes.json()
+      if (isRecord(projectData) &amp;&amp; typeof projectData.default_branch === &#x27;string&#x27;) {
+        defaultBranch = projectData.default_branch
+      }
+    } else {
+      markPartial(budget, mapStatusReason(projectRes.status))
+    }
+  }
+
+  const ref = specifiedBranch || defaultBranch
+  const refParam = ref ? `&amp;ref=${encodeURIComponent(ref)}` : &#x27;&#x27;
+  let nextPage = &#x27;1&#x27;
+  let scannedPages = 0
+
+  while (nextPage &amp;&amp; scannedPages &lt; GITLAB_MAX_PAGES) {
+    const page = nextPage
+    const recursiveRes = await fetchWithBudget(
+      budget,
+      `${baseUrl}/api/v4/projects/${projectPath}/repository/tree?recursive=true&amp;per_page=100&amp;page=${page}${refParam}`,
+      { headers }
+    )
+    if (!recursiveRes) break
+
+    if (!recursiveRes.ok) {
+      markPartial(budget, mapStatusReason(recursiveRes.status))
+      break
+    }
+
+    usedRecursiveData = true
+    const recursiveData: unknown = await recursiveRes.json()
+    const items = normalizeGitLabTree(recursiveData)
+    metrics.sampleSize += items.length
+
+    for (const item of items) {
+      if (item.type === &#x27;blob&#x27;) metrics.fileCount += 1
+      if (item.type === &#x27;tree&#x27;) {
+        metrics.dirCount += 1
+        if (countDepth(item.path) === 1) {
+          applyRootSignal(metrics, item.name)
+        }
+      }
+      metrics.maxDepth = Math.max(metrics.maxDepth, countDepth(item.path))
+      entries.push({ type: item.type, path: item.path })
+    }
+
+    const headerNext = recursiveRes.headers.get(&#x27;x-next-page&#x27;)
+    nextPage = headerNext &amp;&amp; headerNext !== page ? headerNext : &#x27;&#x27;
+    scannedPages += 1
+  }
+
+  if (nextPage) {
+    markPartial(budget, &#x27;gitlab-recursive-paginated&#x27;)
+  }
+
+  return finalizeResult(budget, metrics, usedRecursiveData, entries)
+}
+
+export async function estimateExplorationBudget(context: GitToolContext): Promise&lt;PrescanResult&gt; {
+  const isGitLab = context.parsed.platform === &#x27;gitlab&#x27;
+  const budget: ScanBudget = {
+    startAt: Date.now(),
+    deadlineMs: isGitLab ? GITLAB_DEADLINE_MS : GITHUB_DEADLINE_MS,
+    maxRequests: isGitLab ? GITLAB_MAX_REQUESTS : GITHUB_MAX_REQUESTS,
+    requestCount: 0,
+    partial: false,
+    reasons: new Set&lt;string&gt;(),
+  }
+
+  try {
+    let result: PrescanResult
+    if (context.parsed.platform === &#x27;github&#x27;) {
+      result = await scanGitHub(context, budget)
+    } else if (context.parsed.platform === &#x27;gitlab&#x27;) {
+      result = await scanGitLab(context, budget)
+    } else {
+      result = {
+        maxSteps: DEFAULT_STEPS,
+        confidence: &#x27;low&#x27;,
+        partial: true,
+        reason: &#x27;unsupported-platform&#x27;,
+        metrics: {
+          fileCountEstimate: 0,
+          dirCountEstimate: 0,
+          maxDepthEstimate: 0,
+          sampleSize: 0,
+          requestCount: 0,
+          rootSignalCount: 0,
+        },
+        compressedTreeCsv: &#x27;t,d,p&#x27;,
+        compressedTreeRows: 0,
+        compressedTreeBytes: 5,
+      }
+    }
+
+    console.log(&#x27;[ParseGitFunctions] 预扫描结果:&#x27;, {
+      platform: context.parsed.platform,
+      maxSteps: result.maxSteps,
+      confidence: result.confidence,
+      partial: result.partial,
+      reason: result.reason,
+      metrics: result.metrics,
+      compressedTreeRows: result.compressedTreeRows,
+      compressedTreeBytes: result.compressedTreeBytes,
+    })
+
+    return result
+  } catch (error) {
+    console.warn(&#x27;[ParseGitFunctions] 预扫描失败，使用默认预算:&#x27;, error)
+    return {
+      maxSteps: DEFAULT_STEPS,
+      confidence: &#x27;low&#x27;,
+      partial: true,
+      reason: &#x27;prescan-exception&#x27;,
+      metrics: {
+        fileCountEstimate: 0,
+        dirCountEstimate: 0,
+        maxDepthEstimate: 0,
+        sampleSize: 0,
+        requestCount: budget.requestCount,
+        rootSignalCount: 0,
+      },
+      compressedTreeCsv: &#x27;t,d,p&#x27;,
+      compressedTreeRows: 0,
+      compressedTreeBytes: 5,
+    }
+  }
+}
+</pre>
+            </section>
+            
+            <section class="file-section page-break">
+              <h2>12. lib/utils/export.ts</h2>
+              <p class="meta">文件类型：源码文件 | 行数：350</p>
+              <pre>import { jsPDF } from &#x27;jspdf&#x27;
+import autoTable from &#x27;jspdf-autotable&#x27;
+import * as XLSX from &#x27;xlsx&#x27;
+import type { Project, Requirement, FunctionModule, CostEstimate } from &#x27;@/types&#x27;
+import { DEFAULT_CONFIG } from &#x27;@/constants&#x27;
+
+interface ExportData {
+  project: Project
+  requirement: Requirement | null
+  functions: FunctionModule[]
+  costEstimate: CostEstimate | null
+}
+
+/**
+ * 生成 PDF 报告
+ */
+export function generatePDFReport(data: ExportData): void {
+  const { project, requirement, functions, costEstimate } = data
+
+  // 创建 PDF 文档
+  const doc = new jsPDF({
+    orientation: &#x27;portrait&#x27;,
+    unit: &#x27;mm&#x27;,
+    format: &#x27;a4&#x27;,
+  })
+
+  // 设置中文字体（使用系统默认字体）
+  doc.setFont(&#x27;helvetica&#x27;)
+
+  let yPos = 20
+
+  // 标题
+  doc.setFontSize(20)
+  doc.text(&#x27;Presales Cost Estimation Report&#x27;, 105, yPos, { align: &#x27;center&#x27; })
+  yPos += 15
+
+  // 项目信息
+  doc.setFontSize(14)
+  doc.text(&#x27;Project Information&#x27;, 20, yPos)
+  yPos += 8
+
+  doc.setFontSize(10)
+  doc.text(`Project Name: ${project.name}`, 20, yPos)
+  yPos += 6
+  doc.text(`Industry: ${project.industry || &#x27;Not Specified&#x27;}`, 20, yPos)
+  yPos += 6
+  doc.text(`Status: ${project.status}`, 20, yPos)
+  yPos += 6
+  doc.text(`Created: ${new Date(project.created_at).toLocaleDateString()}`, 20, yPos)
+  yPos += 10
+
+  if (project.description) {
+    doc.text(`Description: ${project.description}`, 20, yPos)
+    yPos += 10
+  }
+
+  // 需求分析
+  if (requirement?.parsed_content) {
+    doc.setFontSize(14)
+    doc.text(&#x27;Requirement Analysis&#x27;, 20, yPos)
+    yPos += 8
+
+    doc.setFontSize(10)
+    const parsed = requirement.parsed_content
+    doc.text(`Project Type: ${parsed.projectType}`, 20, yPos)
+    yPos += 6
+
+    if (parsed.techStack.length &gt; 0) {
+      doc.text(`Tech Stack: ${parsed.techStack.join(&#x27;, &#x27;)}`, 20, yPos)
+      yPos += 6
+    }
+
+    if (parsed.risks.length &gt; 0) {
+      doc.text(`Risks: ${parsed.risks.slice(0, 3).join(&#x27;; &#x27;)}`, 20, yPos)
+      yPos += 10
+    }
+  }
+
+  // 功能模块表格
+  if (functions.length &gt; 0) {
+    doc.setFontSize(14)
+    doc.text(&#x27;Function Modules&#x27;, 20, yPos)
+    yPos += 5
+
+    const tableData = functions.map((fn) =&gt; [
+      fn.module_name,
+      fn.function_name,
+      `${fn.estimated_hours}h`,
+    ])
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [[&#x27;Module&#x27;, &#x27;Function&#x27;, &#x27;Hours&#x27;]],
+      body: tableData,
+      theme: &#x27;grid&#x27;,
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [66, 66, 66] },
+      margin: { left: 20, right: 20 },
+    })
+
+    // 获取表格结束位置
+    yPos = (doc as jsPDF &amp; { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPos + 50
+    yPos += 10
+
+    // 工时汇总
+    const totalHours = functions.reduce((sum, fn) =&gt; sum + fn.estimated_hours, 0)
+    doc.setFontSize(10)
+    doc.text(`Total Estimated Hours: ${totalHours} hours`, 20, yPos)
+    yPos += 10
+  }
+
+  // 成本估算
+  if (costEstimate) {
+    // 检查是否需要新页面
+    if (yPos &gt; 240) {
+      doc.addPage()
+      yPos = 20
+    }
+
+    doc.setFontSize(14)
+    doc.text(&#x27;Cost Estimation&#x27;, 20, yPos)
+    yPos += 8
+
+    doc.setFontSize(10)
+    doc.text(`Labor Cost: CNY ${costEstimate.labor_cost.toLocaleString()}`, 20, yPos)
+    yPos += 6
+    doc.text(`Service Cost: CNY ${costEstimate.service_cost.toLocaleString()}`, 20, yPos)
+    yPos += 6
+    doc.text(`Infrastructure Cost: CNY ${costEstimate.infrastructure_cost.toLocaleString()}`, 20, yPos)
+    yPos += 6
+    doc.text(`Risk Buffer: ${costEstimate.buffer_percentage}%`, 20, yPos)
+    yPos += 8
+
+    doc.setFontSize(12)
+    doc.text(`Total Cost: CNY ${costEstimate.total_cost.toLocaleString()}`, 20, yPos)
+    yPos += 10
+
+    // 成本明细
+    if (costEstimate.breakdown) {
+      const breakdown = costEstimate.breakdown
+      const costData: string[][] = []
+
+      // 新版本：按角色分解
+      if (breakdown.roleBreakdown &amp;&amp; breakdown.roleBreakdown.length &gt; 0) {
+        breakdown.roleBreakdown.forEach((role) =&gt; {
+          costData.push([`${role.role} (${role.days} days)`, `CNY ${role.cost.toLocaleString()}`])
+        })
+
+        // 额外工作
+        if (breakdown.additionalWorkBreakdown &amp;&amp; breakdown.additionalWorkBreakdown.length &gt; 0) {
+          breakdown.additionalWorkBreakdown.forEach((work) =&gt; {
+            costData.push([`${work.workItem} (${work.days} days)`, `CNY ${work.cost.toLocaleString()}`])
+          })
+        }
+      } else {
+        // 旧版本：按阶段分解
+        costData.push(
+          [&#x27;Development&#x27;, `CNY ${(breakdown.development || 0).toLocaleString()}`],
+          [&#x27;Testing&#x27;, `CNY ${(breakdown.testing || 0).toLocaleString()}`],
+          [&#x27;Deployment&#x27;, `CNY ${(breakdown.deployment || 0).toLocaleString()}`],
+          [&#x27;Maintenance&#x27;, `CNY ${(breakdown.maintenance || 0).toLocaleString()}`],
+        )
+      }
+
+      if (breakdown.thirdPartyServices &amp;&amp; breakdown.thirdPartyServices.length &gt; 0) {
+        breakdown.thirdPartyServices.forEach((service) =&gt; {
+          costData.push([service.name, `CNY ${service.cost.toLocaleString()}`])
+        })
+      }
+
+      autoTable(doc, {
+        startY: yPos,
+        head: [[&#x27;Cost Item&#x27;, &#x27;Amount&#x27;]],
+        body: costData,
+        theme: &#x27;striped&#x27;,
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [66, 66, 66] },
+        margin: { left: 20, right: 20 },
+        tableWidth: 100,
+      })
+    }
+  }
+
+  // 页脚
+  const pageCount = doc.getNumberOfPages()
+  for (let i = 1; i &lt;= pageCount; i++) {
+    doc.setPage(i)
+    doc.setFontSize(8)
+    doc.text(
+      `Generated on ${new Date().toLocaleDateString()} | Page ${i} of ${pageCount}`,
+      105,
+      290,
+      { align: &#x27;center&#x27; }
+    )
+  }
+
+  // 下载文件
+  const fileName = `${project.name.replace(/[^a-zA-Z0-9]/g, &#x27;_&#x27;)}_report.pdf`
+  doc.save(fileName)
+}
+
+/**
+ * 生成 Excel 报告
+ */
+export function generateExcelReport(data: ExportData): void {
+  const { project, requirement, functions, costEstimate } = data
+
+  // 创建工作簿
+  const wb = XLSX.utils.book_new()
+
+  // Sheet 1: 项目概览
+  const overviewData = [
+    [&#x27;Project Cost Estimation Report&#x27;],
+    [],
+    [&#x27;Project Information&#x27;],
+    [&#x27;Project Name&#x27;, project.name],
+    [&#x27;Industry&#x27;, project.industry || &#x27;Not Specified&#x27;],
+    [&#x27;Status&#x27;, project.status],
+    [&#x27;Created Date&#x27;, new Date(project.created_at).toLocaleDateString()],
+    [&#x27;Description&#x27;, project.description || &#x27;&#x27;],
+    [],
+  ]
+
+  if (requirement?.parsed_content) {
+    const parsed = requirement.parsed_content
+    overviewData.push(
+      [&#x27;Requirement Analysis&#x27;],
+      [&#x27;Project Type&#x27;, parsed.projectType],
+      [&#x27;Business Goals&#x27;, parsed.businessGoals.join(&#x27;, &#x27;)],
+      [&#x27;Key Features&#x27;, parsed.keyFeatures.join(&#x27;, &#x27;)],
+      [&#x27;Tech Stack&#x27;, parsed.techStack.join(&#x27;, &#x27;)],
+      [&#x27;Risks&#x27;, parsed.risks.join(&#x27;, &#x27;)],
+      []
+    )
+  }
+
+  if (costEstimate) {
+    overviewData.push(
+      [&#x27;Cost Summary&#x27;],
+      [&#x27;Labor Cost&#x27;, `${costEstimate.labor_cost}`],
+      [&#x27;Service Cost&#x27;, `${costEstimate.service_cost}`],
+      [&#x27;Infrastructure Cost&#x27;, `${costEstimate.infrastructure_cost}`],
+      [&#x27;Risk Buffer&#x27;, `${costEstimate.buffer_percentage}%`],
+      [&#x27;Total Cost&#x27;, `${costEstimate.total_cost}`],
+      []
+    )
+  }
+
+  const overviewSheet = XLSX.utils.aoa_to_sheet(overviewData)
+  overviewSheet[&#x27;!cols&#x27;] = [{ wch: 20 }, { wch: 50 }]
+  XLSX.utils.book_append_sheet(wb, overviewSheet, &#x27;Overview&#x27;)
+
+  // Sheet 2: 功能模块
+  if (functions.length &gt; 0) {
+    const functionsData: (string | number)[][] = [
+      [&#x27;Module&#x27;, &#x27;Function&#x27;, &#x27;Description&#x27;, &#x27;Hours&#x27;],
+    ]
+
+    let totalHours = 0
+
+    functions.forEach((fn) =&gt; {
+      totalHours += fn.estimated_hours
+
+      functionsData.push([
+        fn.module_name,
+        fn.function_name,
+        fn.description || &#x27;&#x27;,
+        fn.estimated_hours,
+      ])
+    })
+
+    functionsData.push(
+      [],
+      [&#x27;Total&#x27;, &#x27;&#x27;, &#x27;&#x27;, totalHours]
+    )
+
+    const functionsSheet = XLSX.utils.aoa_to_sheet(functionsData)
+    functionsSheet[&#x27;!cols&#x27;] = [
+      { wch: 15 },
+      { wch: 20 },
+      { wch: 30 },
+      { wch: 10 },
+    ]
+    XLSX.utils.book_append_sheet(wb, functionsSheet, &#x27;Functions&#x27;)
+  }
+
+  // Sheet 3: 成本明细
+  if (costEstimate?.breakdown) {
+    const breakdown = costEstimate.breakdown
+    const costData: (string | number)[][] = [
+      [&#x27;Cost Breakdown&#x27;],
+      [],
+    ]
+
+    // 新版本：按角色分解
+    if (breakdown.roleBreakdown &amp;&amp; breakdown.roleBreakdown.length &gt; 0) {
+      costData.push([&#x27;Role&#x27;, &#x27;Days&#x27;, &#x27;Headcount&#x27;, &#x27;Amount (CNY)&#x27;])
+      breakdown.roleBreakdown.forEach((role) =&gt; {
+        costData.push([role.role, role.days, role.headcount, role.cost])
+      })
+
+      // 额外工作
+      if (breakdown.additionalWorkBreakdown &amp;&amp; breakdown.additionalWorkBreakdown.length &gt; 0) {
+        costData.push([], [&#x27;Additional Work&#x27;, &#x27;Days&#x27;, &#x27;&#x27;, &#x27;Amount (CNY)&#x27;])
+        breakdown.additionalWorkBreakdown.forEach((work) =&gt; {
+          costData.push([work.workItem, work.days, &#x27;&#x27;, work.cost])
+        })
+      }
+    } else {
+      // 旧版本：按阶段分解
+      costData.push(
+        [&#x27;Item&#x27;, &#x27;Amount (CNY)&#x27;],
+        [&#x27;Development&#x27;, breakdown.development || 0],
+        [&#x27;Testing&#x27;, breakdown.testing || 0],
+        [&#x27;Deployment&#x27;, breakdown.deployment || 0],
+        [&#x27;Maintenance&#x27;, breakdown.maintenance || 0],
+      )
+    }
+
+    if (breakdown.thirdPartyServices &amp;&amp; breakdown.thirdPartyServices.length &gt; 0) {
+      costData.push([], [&#x27;Third Party Services&#x27;])
+      breakdown.thirdPartyServices.forEach((service) =&gt; {
+        costData.push([service.name, service.cost])
+      })
+    }
+
+    // 汇总信息
+    const bufferDisplay = costEstimate.buffer_coefficient
+      ? `Buffer (${costEstimate.buffer_coefficient}x)`
+      : `Risk Buffer (${costEstimate.buffer_percentage}%)`
+
+    costData.push(
+      [],
+      [&#x27;Summary&#x27;],
+      [&#x27;Base Days&#x27;, costEstimate.base_days || &#x27;-&#x27;],
+      [&#x27;Buffered Days&#x27;, costEstimate.buffered_days || &#x27;-&#x27;],
+      [&#x27;Subtotal&#x27;, costEstimate.labor_cost + costEstimate.service_cost + costEstimate.infrastructure_cost],
+      [bufferDisplay, costEstimate.total_cost - (costEstimate.labor_cost + costEstimate.service_cost + costEstimate.infrastructure_cost)],
+      [&#x27;Total&#x27;, costEstimate.total_cost]
+    )
+
+    const costSheet = XLSX.utils.aoa_to_sheet(costData)
+    costSheet[&#x27;!cols&#x27;] = [{ wch: 25 }, { wch: 15 }, { wch: 12 }, { wch: 20 }]
+    XLSX.utils.book_append_sheet(wb, costSheet, &#x27;Cost Details&#x27;)
+  }
+
+  // 下载文件
+  const fileName = `${project.name.replace(/[^a-zA-Z0-9]/g, &#x27;_&#x27;)}_report.xlsx`
+  XLSX.writeFile(wb, fileName)
+}
+</pre>
+            </section>
+            
+            <section class="file-section page-break">
+              <h2>13. components/quick-estimate/quick-estimate-workspace.tsx</h2>
+              <p class="meta">文件类型：源码文件 | 行数：209</p>
+              <pre>&#x27;use client&#x27;
+
+import { useCallback, useMemo, useState } from &#x27;react&#x27;
+import { FunctionSelector } from &#x27;./function-selector&#x27;
+import { EstimateSummary } from &#x27;./estimate-summary&#x27;
+import { MobileSummaryBar } from &#x27;./mobile-summary-bar&#x27;
+import { SaveEstimateDialog } from &#x27;./save-estimate-dialog&#x27;
+import { DEFAULT_CONFIG } from &#x27;@/constants&#x27;
+import type { FunctionLibraryItem, FunctionGroupWithItems, QuickEstimateItem } from &#x27;@/types&#x27;
+import { toast } from &#x27;sonner&#x27;
+
+interface QuickEstimateWorkspaceProps {
+  items: FunctionLibraryItem[]
+  groups: FunctionGroupWithItems[]
+  defaultLaborCostPerDay: number
+}
+
+export function QuickEstimateWorkspace({
+  items,
+  groups,
+  defaultLaborCostPerDay,
+}: QuickEstimateWorkspaceProps) {
+  const [selectedItems, setSelectedItems] = useState&lt;Map&lt;string, QuickEstimateItem&gt;&gt;(new Map())
+  const [bufferCoefficient, setBufferCoefficient] = useState(1.3)
+  const [laborCostPerDay, setLaborCostPerDay] = useState(defaultLaborCostPerDay)
+
+  // 功能库数据 Map，用于查 complexity_factors
+  const functionLibraryMap = useMemo(() =&gt; {
+    const map = new Map&lt;string, FunctionLibraryItem&gt;()
+    for (const item of items) {
+      map.set(item.id, item)
+    }
+    return map
+  }, [items])
+
+  // 已选 ID 集合
+  const selectedIds = useMemo(() =&gt; new Set(selectedItems.keys()), [selectedItems])
+
+  // 切换选中
+  const handleToggle = useCallback((item: FunctionLibraryItem) =&gt; {
+    setSelectedItems((prev) =&gt; {
+      const next = new Map(prev)
+      if (next.has(item.id)) {
+        next.delete(item.id)
+      } else {
+        next.set(item.id, {
+          function_library_id: item.id,
+          function_name: item.function_name,
+          category: item.category,
+          standard_hours: item.standard_hours,
+          selected_factors: [],
+          complexity_multiplier: 1,
+          adjusted_hours: item.standard_hours,
+        })
+      }
+      return next
+    })
+  }, [])
+
+  // 更新复杂度因子
+  const handleUpdateFactors = useCallback(
+    (id: string, selectedFactors: string[]) =&gt; {
+      setSelectedItems((prev) =&gt; {
+        const next = new Map(prev)
+        const item = next.get(id)
+        if (!item) return prev
+
+        const libraryItem = functionLibraryMap.get(id)
+        const factors = libraryItem?.complexity_factors || {}
+
+        // 计算复杂度系数 = 选中因子值的乘积
+        const multiplier = selectedFactors.reduce((acc, key) =&gt; {
+          return acc * (factors[key] || 1)
+        }, 1)
+
+        next.set(id, {
+          ...item,
+          selected_factors: selectedFactors,
+          complexity_multiplier: Math.round(multiplier * 100) / 100,
+          adjusted_hours: Math.round(item.standard_hours * multiplier * 100) / 100,
+        })
+        return next
+      })
+    },
+    [functionLibraryMap]
+  )
+
+  // 移除
+  const handleRemove = useCallback((id: string) =&gt; {
+    setSelectedItems((prev) =&gt; {
+      const next = new Map(prev)
+      next.delete(id)
+      return next
+    })
+  }, [])
+
+  // 按组添加
+  const handleAddGroup = useCallback((group: FunctionGroupWithItems) =&gt; {
+    let addedCount = 0
+    let skippedCount = 0
+
+    setSelectedItems((prev) =&gt; {
+      const next = new Map(prev)
+      for (const groupItem of group.items) {
+        if (next.has(groupItem.function_library_id)) {
+          skippedCount++
+          continue
+        }
+        next.set(groupItem.function_library_id, {
+          function_library_id: groupItem.function_library_id,
+          function_name: groupItem.function_name,
+          category: groupItem.category,
+          standard_hours: groupItem.standard_hours,
+          selected_factors: [],
+          complexity_multiplier: 1,
+          adjusted_hours: groupItem.standard_hours,
+        })
+        addedCount++
+      }
+      return next
+    })
+
+    setTimeout(() =&gt; {
+      if (skippedCount &gt; 0 &amp;&amp; addedCount &gt; 0) {
+        toast.info(`已添加 ${addedCount} 个功能，${skippedCount} 个已存在已跳过`)
+      } else if (addedCount &gt; 0) {
+        toast.success(`已从「${group.name}」添加 ${addedCount} 个功能`)
+      } else {
+        toast.info(&#x27;组内所有功能已在列表中&#x27;)
+      }
+    }, 0)
+  }, [])
+
+  // 实时汇总计算
+  const summary = useMemo(() =&gt; {
+    const entries = Array.from(selectedItems.values())
+    const totalHours = entries.reduce((sum, item) =&gt; sum + item.standard_hours, 0)
+    const totalAdjustedHours = entries.reduce((sum, item) =&gt; sum + item.adjusted_hours, 0)
+    const totalDays = Math.round((totalAdjustedHours / DEFAULT_CONFIG.WORKING_HOURS_PER_DAY) * 10) / 10
+    const bufferedDays = Math.round(totalDays * bufferCoefficient * 10) / 10
+    const totalCost = Math.round(bufferedDays * laborCostPerDay)
+
+    return {
+      count: entries.length,
+      totalHours: Math.round(totalHours * 10) / 10,
+      totalAdjustedHours: Math.round(totalAdjustedHours * 10) / 10,
+      totalDays,
+      bufferedDays,
+      totalCost,
+    }
+  }, [selectedItems, bufferCoefficient, laborCostPerDay])
+
+  const summaryProps = {
+    selectedItems,
+    functionLibraryMap,
+    bufferCoefficient,
+    laborCostPerDay,
+    onBufferChange: setBufferCoefficient,
+    onLaborCostChange: setLaborCostPerDay,
+    onUpdateFactors: handleUpdateFactors,
+    onRemove: handleRemove,
+    summary,
+  }
+
+  return (
+    &lt;div className=&quot;space-y-4&quot;&gt;
+      {/* 顶部操作栏 */}
+      &lt;div className=&quot;flex items-center justify-between&quot;&gt;
+        &lt;div&gt;
+          &lt;h1 className=&quot;text-2xl font-bold&quot;&gt;快速估算&lt;/h1&gt;
+          &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;从功能库选择模块，快速生成预估报价&lt;/p&gt;
+        &lt;/div&gt;
+        &lt;SaveEstimateDialog
+          selectedItems={Array.from(selectedItems.values())}
+          totalHours={summary.totalHours}
+          totalAdjustedHours={summary.totalAdjustedHours}
+          bufferCoefficient={bufferCoefficient}
+          laborCostPerDay={laborCostPerDay}
+          totalCost={summary.totalCost}
+          disabled={summary.count === 0}
+        /&gt;
+      &lt;/div&gt;
+
+      {/* 响应式主内容区 */}
+      &lt;div className=&quot;lg:grid lg:grid-cols-[1fr_420px] lg:gap-6&quot;&gt;
+        {/* 左侧：功能选择 */}
+        &lt;div&gt;
+          &lt;FunctionSelector
+            items={items}
+            groups={groups}
+            selectedIds={selectedIds}
+            onToggle={handleToggle}
+            onAddGroup={handleAddGroup}
+          /&gt;
+        &lt;/div&gt;
+
+        {/* 右侧：汇总面板（桌面端） */}
+        &lt;div className=&quot;hidden lg:block&quot;&gt;
+          &lt;div className=&quot;sticky top-4&quot;&gt;
+            &lt;EstimateSummary {...summaryProps} /&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+
+      {/* 移动端底部悬浮栏 */}
+      &lt;MobileSummaryBar {...summaryProps} /&gt;
+    &lt;/div&gt;
+  )
+}
+</pre>
+            </section>
+            
+            <section class="file-section page-break">
+              <h2>14. app/(dashboard)/projects/[id]/report/page.tsx</h2>
+              <p class="meta">文件类型：源码文件 | 行数：466</p>
+              <pre>import { Suspense } from &#x27;react&#x27;
+import { notFound } from &#x27;next/navigation&#x27;
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from &#x27;@/components/ui/card&#x27;
+import { Badge } from &#x27;@/components/ui/badge&#x27;
+import { Skeleton } from &#x27;@/components/ui/skeleton&#x27;
+import { Separator } from &#x27;@/components/ui/separator&#x27;
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from &#x27;@/components/ui/table&#x27;
+import { FileText, DollarSign, Clock, AlertTriangle } from &#x27;lucide-react&#x27;
+import { getProject } from &#x27;@/app/actions/projects&#x27;
+import { getLatestRequirement } from &#x27;@/app/actions/requirements&#x27;
+import { getFunctionModules } from &#x27;@/app/actions/functions&#x27;
+import { getCostEstimate } from &#x27;@/app/actions/costs&#x27;
+import { ExportButtons } from &#x27;@/components/project/export-buttons&#x27;
+
+
+interface ReportPageProps {
+  params: Promise&lt;{ id: string }&gt;
+}
+
+export default async function ReportPage({ params }: ReportPageProps) {
+  const { id } = await params
+
+  return (
+    &lt;div className=&quot;space-y-6&quot;&gt;
+      &lt;div className=&quot;flex items-center justify-between&quot;&gt;
+        &lt;div&gt;
+          &lt;h2 className=&quot;text-2xl font-bold tracking-tight&quot;&gt;报告预览&lt;/h2&gt;
+          &lt;p className=&quot;text-muted-foreground&quot;&gt;
+            查看完整的成本估算报告并导出
+          &lt;/p&gt;
+        &lt;/div&gt;
+        &lt;Suspense fallback={&lt;Skeleton className=&quot;h-10 w-32&quot; /&gt;}&gt;
+          &lt;ExportButtonsWrapper projectId={id} /&gt;
+        &lt;/Suspense&gt;
+      &lt;/div&gt;
+
+      &lt;Suspense fallback={&lt;ReportSkeleton /&gt;}&gt;
+        &lt;ReportContent projectId={id} /&gt;
+      &lt;/Suspense&gt;
+    &lt;/div&gt;
+  )
+}
+
+async function ExportButtonsWrapper({ projectId }: { projectId: string }) {
+  const [project, requirement, functions, costEstimate] = await Promise.all([
+    getProject(projectId),
+    getLatestRequirement(projectId),
+    getFunctionModules(projectId),
+    getCostEstimate(projectId),
+  ])
+
+  if (!project) return null
+
+  return (
+    &lt;ExportButtons
+      project={project}
+      requirement={requirement}
+      functions={functions}
+      costEstimate={costEstimate}
+    /&gt;
+  )
+}
+
+async function ReportContent({ projectId }: { projectId: string }) {
+  const [project, requirement, functions, costEstimate] = await Promise.all([
+    getProject(projectId),
+    getLatestRequirement(projectId),
+    getFunctionModules(projectId),
+    getCostEstimate(projectId),
+  ])
+
+  if (!project) {
+    notFound()
+  }
+
+  const totalHours = functions.reduce((sum, fn) =&gt; sum + fn.estimated_hours, 0)
+
+  return (
+    &lt;div className=&quot;space-y-6&quot;&gt;
+      {/* 项目概览 */}
+      &lt;Card&gt;
+        &lt;CardHeader&gt;
+          &lt;CardTitle className=&quot;flex items-center gap-2&quot;&gt;
+            &lt;FileText className=&quot;h-5 w-5&quot; /&gt;
+            项目概览
+          &lt;/CardTitle&gt;
+        &lt;/CardHeader&gt;
+        &lt;CardContent className=&quot;space-y-4&quot;&gt;
+          &lt;div className=&quot;grid gap-4 md:grid-cols-2&quot;&gt;
+            &lt;div&gt;
+              &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;项目名称&lt;/p&gt;
+              &lt;p className=&quot;font-medium&quot;&gt;{project.name}&lt;/p&gt;
+            &lt;/div&gt;
+            &lt;div&gt;
+              &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;行业&lt;/p&gt;
+              &lt;p className=&quot;font-medium&quot;&gt;{project.industry || &#x27;未指定&#x27;}&lt;/p&gt;
+            &lt;/div&gt;
+            &lt;div&gt;
+              &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;状态&lt;/p&gt;
+              &lt;Badge variant={project.status === &#x27;completed&#x27; ? &#x27;default&#x27; : &#x27;secondary&#x27;}&gt;
+                {project.status === &#x27;completed&#x27; ? &#x27;已完成&#x27; : project.status}
+              &lt;/Badge&gt;
+            &lt;/div&gt;
+            &lt;div&gt;
+              &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;创建时间&lt;/p&gt;
+              &lt;p className=&quot;font-medium&quot;&gt;
+                {new Date(project.created_at).toLocaleDateString(&#x27;zh-CN&#x27;)}
+              &lt;/p&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
+          {project.description &amp;&amp; (
+            &lt;div&gt;
+              &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;项目描述&lt;/p&gt;
+              &lt;p className=&quot;mt-1&quot;&gt;{project.description}&lt;/p&gt;
+            &lt;/div&gt;
+          )}
+        &lt;/CardContent&gt;
+      &lt;/Card&gt;
+
+      {/* 需求分析 */}
+      {requirement?.parsed_content &amp;&amp; (
+        &lt;Card&gt;
+          &lt;CardHeader&gt;
+            &lt;CardTitle&gt;需求分析&lt;/CardTitle&gt;
+            &lt;CardDescription&gt;AI 分析结果&lt;/CardDescription&gt;
+          &lt;/CardHeader&gt;
+          &lt;CardContent className=&quot;space-y-4&quot;&gt;
+            &lt;div className=&quot;grid gap-4 md:grid-cols-2&quot;&gt;
+              &lt;div&gt;
+                &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;项目类型&lt;/p&gt;
+                &lt;p className=&quot;font-medium&quot;&gt;{requirement.parsed_content.projectType}&lt;/p&gt;
+              &lt;/div&gt;
+              &lt;div&gt;
+                &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;技术栈&lt;/p&gt;
+                &lt;div className=&quot;flex flex-wrap gap-1 mt-1&quot;&gt;
+                  {requirement.parsed_content.techStack.map((tech, index) =&gt; (
+                    &lt;Badge key={index} variant=&quot;outline&quot;&gt;
+                      {tech}
+                    &lt;/Badge&gt;
+                  ))}
+                &lt;/div&gt;
+              &lt;/div&gt;
+            &lt;/div&gt;
+
+            &lt;div&gt;
+              &lt;p className=&quot;text-sm text-muted-foreground mb-2&quot;&gt;业务目标&lt;/p&gt;
+              &lt;ul className=&quot;list-disc list-inside space-y-1&quot;&gt;
+                {requirement.parsed_content.businessGoals.map((goal, index) =&gt; (
+                  &lt;li key={index} className=&quot;text-sm&quot;&gt;
+                    {goal}
+                  &lt;/li&gt;
+                ))}
+              &lt;/ul&gt;
+            &lt;/div&gt;
+
+            &lt;div&gt;
+              &lt;p className=&quot;text-sm text-muted-foreground mb-2&quot;&gt;核心功能&lt;/p&gt;
+              &lt;ul className=&quot;list-disc list-inside space-y-1&quot;&gt;
+                {requirement.parsed_content.keyFeatures.map((feature, index) =&gt; (
+                  &lt;li key={index} className=&quot;text-sm&quot;&gt;
+                    {feature}
+                  &lt;/li&gt;
+                ))}
+              &lt;/ul&gt;
+            &lt;/div&gt;
+
+            {requirement.parsed_content.risks.length &gt; 0 &amp;&amp; (
+              &lt;div&gt;
+                &lt;p className=&quot;text-sm text-muted-foreground mb-2 flex items-center gap-1&quot;&gt;
+                  &lt;AlertTriangle className=&quot;h-4 w-4 text-yellow-500&quot; /&gt;
+                  风险提示
+                &lt;/p&gt;
+                &lt;ul className=&quot;list-disc list-inside space-y-1&quot;&gt;
+                  {requirement.parsed_content.risks.map((risk, index) =&gt; (
+                    &lt;li key={index} className=&quot;text-sm text-yellow-700&quot;&gt;
+                      {risk}
+                    &lt;/li&gt;
+                  ))}
+                &lt;/ul&gt;
+              &lt;/div&gt;
+            )}
+          &lt;/CardContent&gt;
+        &lt;/Card&gt;
+      )}
+
+      {/* 功能模块 */}
+      {functions.length &gt; 0 &amp;&amp; (
+        &lt;Card&gt;
+          &lt;CardHeader&gt;
+            &lt;CardTitle className=&quot;flex items-center gap-2&quot;&gt;
+              &lt;Clock className=&quot;h-5 w-5&quot; /&gt;
+              功能模块
+            &lt;/CardTitle&gt;
+            &lt;CardDescription&gt;
+              共 {functions.length} 个功能，预估总工时 {totalHours} 小时
+            &lt;/CardDescription&gt;
+          &lt;/CardHeader&gt;
+          &lt;CardContent&gt;
+            &lt;Table&gt;
+              &lt;TableHeader&gt;
+                &lt;TableRow&gt;
+                  &lt;TableHead&gt;模块&lt;/TableHead&gt;
+                  &lt;TableHead&gt;功能&lt;/TableHead&gt;
+                  &lt;TableHead className=&quot;text-right&quot;&gt;工时&lt;/TableHead&gt;
+                &lt;/TableRow&gt;
+              &lt;/TableHeader&gt;
+              &lt;TableBody&gt;
+                {functions.map((fn) =&gt; (
+                  &lt;TableRow key={fn.id}&gt;
+                    &lt;TableCell className=&quot;font-medium&quot;&gt;{fn.module_name}&lt;/TableCell&gt;
+                    &lt;TableCell&gt;{fn.function_name}&lt;/TableCell&gt;
+                    &lt;TableCell className=&quot;text-right&quot;&gt;{fn.estimated_hours}h&lt;/TableCell&gt;
+                  &lt;/TableRow&gt;
+                ))}
+              &lt;/TableBody&gt;
+            &lt;/Table&gt;
+
+            &lt;Separator className=&quot;my-4&quot; /&gt;
+
+            &lt;div className=&quot;flex justify-end&quot;&gt;
+              &lt;div className=&quot;text-right&quot;&gt;
+                &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;总工时&lt;/p&gt;
+                &lt;p className=&quot;text-2xl font-bold&quot;&gt;{totalHours} 小时&lt;/p&gt;
+              &lt;/div&gt;
+            &lt;/div&gt;
+          &lt;/CardContent&gt;
+        &lt;/Card&gt;
+      )}
+
+      {/* 成本估算 */}
+      {costEstimate &amp;&amp; (
+        &lt;Card&gt;
+          &lt;CardHeader&gt;
+            &lt;CardTitle className=&quot;flex items-center gap-2&quot;&gt;
+              &lt;DollarSign className=&quot;h-5 w-5&quot; /&gt;
+              成本估算
+            &lt;/CardTitle&gt;
+          &lt;/CardHeader&gt;
+          &lt;CardContent className=&quot;space-y-6&quot;&gt;
+            {/* 工时概览（新版本） */}
+            {costEstimate.base_days &amp;&amp; (
+              &lt;div className=&quot;grid gap-4 md:grid-cols-4&quot;&gt;
+                &lt;div className=&quot;text-center p-4 bg-muted rounded-lg&quot;&gt;
+                  &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;基础人天&lt;/p&gt;
+                  &lt;p className=&quot;text-xl font-bold&quot;&gt;{costEstimate.base_days}&lt;/p&gt;
+                &lt;/div&gt;
+                &lt;div className=&quot;text-center p-4 bg-muted rounded-lg&quot;&gt;
+                  &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;含缓冲人天&lt;/p&gt;
+                  &lt;p className=&quot;text-xl font-bold&quot;&gt;{costEstimate.buffered_days}&lt;/p&gt;
+                &lt;/div&gt;
+                &lt;div className=&quot;text-center p-4 bg-muted rounded-lg&quot;&gt;
+                  &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;缓冲系数&lt;/p&gt;
+                  &lt;p className=&quot;text-xl font-bold&quot;&gt;{costEstimate.buffer_coefficient}x&lt;/p&gt;
+                &lt;/div&gt;
+                &lt;div className=&quot;text-center p-4 bg-muted rounded-lg&quot;&gt;
+                  &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;团队规模&lt;/p&gt;
+                  &lt;p className=&quot;text-xl font-bold&quot;&gt;
+                    {costEstimate.breakdown?.roleBreakdown?.reduce((sum, r) =&gt; sum + r.headcount, 0) || &#x27;-&#x27;} 人
+                  &lt;/p&gt;
+                &lt;/div&gt;
+              &lt;/div&gt;
+            )}
+
+            {/* 成本汇总 */}
+            &lt;div className=&quot;grid gap-4 md:grid-cols-4&quot;&gt;
+              &lt;div className=&quot;text-center p-4 bg-muted rounded-lg&quot;&gt;
+                &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;人力成本&lt;/p&gt;
+                &lt;p className=&quot;text-xl font-bold&quot;&gt;
+                  ¥{costEstimate.labor_cost.toLocaleString()}
+                &lt;/p&gt;
+              &lt;/div&gt;
+              &lt;div className=&quot;text-center p-4 bg-muted rounded-lg&quot;&gt;
+                &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;服务成本&lt;/p&gt;
+                &lt;p className=&quot;text-xl font-bold&quot;&gt;
+                  ¥{costEstimate.service_cost.toLocaleString()}
+                &lt;/p&gt;
+              &lt;/div&gt;
+              &lt;div className=&quot;text-center p-4 bg-muted rounded-lg&quot;&gt;
+                &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;基础设施成本&lt;/p&gt;
+                &lt;p className=&quot;text-xl font-bold&quot;&gt;
+                  ¥{costEstimate.infrastructure_cost.toLocaleString()}
+                &lt;/p&gt;
+              &lt;/div&gt;
+              &lt;div className=&quot;text-center p-4 bg-primary/10 rounded-lg&quot;&gt;
+                &lt;p className=&quot;text-sm text-muted-foreground&quot;&gt;
+                  总成本（含 {costEstimate.buffer_coefficient ? `${costEstimate.buffer_coefficient}x` : `${costEstimate.buffer_percentage}%`} 缓冲）
+                &lt;/p&gt;
+                &lt;p className=&quot;text-2xl font-bold text-primary&quot;&gt;
+                  ¥{costEstimate.total_cost.toLocaleString()}
+                &lt;/p&gt;
+              &lt;/div&gt;
+            &lt;/div&gt;
+
+            {/* 成本明细 */}
+            {costEstimate.breakdown &amp;&amp; (
+              &lt;&gt;
+                &lt;Separator /&gt;
+                &lt;div&gt;
+                  &lt;p className=&quot;font-medium mb-4&quot;&gt;成本明细&lt;/p&gt;
+                  {/* 新版本：按角色分解 */}
+                  {costEstimate.breakdown.roleBreakdown &amp;&amp; costEstimate.breakdown.roleBreakdown.length &gt; 0 ? (
+                    &lt;&gt;
+                      &lt;Table&gt;
+                        &lt;TableHeader&gt;
+                          &lt;TableRow&gt;
+                            &lt;TableHead&gt;角色&lt;/TableHead&gt;
+                            &lt;TableHead className=&quot;text-right&quot;&gt;人天&lt;/TableHead&gt;
+                            &lt;TableHead className=&quot;text-right&quot;&gt;人数&lt;/TableHead&gt;
+                            &lt;TableHead className=&quot;text-right&quot;&gt;成本&lt;/TableHead&gt;
+                          &lt;/TableRow&gt;
+                        &lt;/TableHeader&gt;
+                        &lt;TableBody&gt;
+                          {costEstimate.breakdown.roleBreakdown.map((role, index) =&gt; (
+                            &lt;TableRow key={index}&gt;
+                              &lt;TableCell className=&quot;font-medium&quot;&gt;{role.role}&lt;/TableCell&gt;
+                              &lt;TableCell className=&quot;text-right&quot;&gt;{role.days}&lt;/TableCell&gt;
+                              &lt;TableCell className=&quot;text-right&quot;&gt;{role.headcount}&lt;/TableCell&gt;
+                              &lt;TableCell className=&quot;text-right&quot;&gt;¥{role.cost.toLocaleString()}&lt;/TableCell&gt;
+                            &lt;/TableRow&gt;
+                          ))}
+                        &lt;/TableBody&gt;
+                      &lt;/Table&gt;
+
+                      {/* 额外工作 */}
+                      {costEstimate.breakdown.additionalWorkBreakdown &amp;&amp; costEstimate.breakdown.additionalWorkBreakdown.length &gt; 0 &amp;&amp; (
+                        &lt;div className=&quot;mt-4&quot;&gt;
+                          &lt;p className=&quot;font-medium mb-2 text-sm text-muted-foreground&quot;&gt;额外工作&lt;/p&gt;
+                          &lt;Table&gt;
+                            &lt;TableHeader&gt;
+                              &lt;TableRow&gt;
+                                &lt;TableHead&gt;工作项&lt;/TableHead&gt;
+                                &lt;TableHead className=&quot;text-right&quot;&gt;人天&lt;/TableHead&gt;
+                                &lt;TableHead className=&quot;text-right&quot;&gt;成本&lt;/TableHead&gt;
+                              &lt;/TableRow&gt;
+                            &lt;/TableHeader&gt;
+                            &lt;TableBody&gt;
+                              {costEstimate.breakdown.additionalWorkBreakdown.map((work, index) =&gt; (
+                                &lt;TableRow key={index}&gt;
+                                  &lt;TableCell className=&quot;font-medium&quot;&gt;{work.workItem}&lt;/TableCell&gt;
+                                  &lt;TableCell className=&quot;text-right&quot;&gt;{work.days}&lt;/TableCell&gt;
+                                  &lt;TableCell className=&quot;text-right&quot;&gt;¥{work.cost.toLocaleString()}&lt;/TableCell&gt;
+                                &lt;/TableRow&gt;
+                              ))}
+                            &lt;/TableBody&gt;
+                          &lt;/Table&gt;
+                        &lt;/div&gt;
+                      )}
+                    &lt;/&gt;
+                  ) : (
+                    /* 旧版本：按阶段分解 */
+                    &lt;Table&gt;
+                      &lt;TableHeader&gt;
+                        &lt;TableRow&gt;
+                          &lt;TableHead&gt;项目&lt;/TableHead&gt;
+                          &lt;TableHead className=&quot;text-right&quot;&gt;金额&lt;/TableHead&gt;
+                        &lt;/TableRow&gt;
+                      &lt;/TableHeader&gt;
+                      &lt;TableBody&gt;
+                        &lt;TableRow&gt;
+                          &lt;TableCell&gt;开发费用&lt;/TableCell&gt;
+                          &lt;TableCell className=&quot;text-right&quot;&gt;
+                            ¥{(costEstimate.breakdown.development || 0).toLocaleString()}
+                          &lt;/TableCell&gt;
+                        &lt;/TableRow&gt;
+                        &lt;TableRow&gt;
+                          &lt;TableCell&gt;测试费用&lt;/TableCell&gt;
+                          &lt;TableCell className=&quot;text-right&quot;&gt;
+                            ¥{(costEstimate.breakdown.testing || 0).toLocaleString()}
+                          &lt;/TableCell&gt;
+                        &lt;/TableRow&gt;
+                        &lt;TableRow&gt;
+                          &lt;TableCell&gt;部署费用&lt;/TableCell&gt;
+                          &lt;TableCell className=&quot;text-right&quot;&gt;
+                            ¥{(costEstimate.breakdown.deployment || 0).toLocaleString()}
+                          &lt;/TableCell&gt;
+                        &lt;/TableRow&gt;
+                        &lt;TableRow&gt;
+                          &lt;TableCell&gt;维护费用&lt;/TableCell&gt;
+                          &lt;TableCell className=&quot;text-right&quot;&gt;
+                            ¥{(costEstimate.breakdown.maintenance || 0).toLocaleString()}
+                          &lt;/TableCell&gt;
+                        &lt;/TableRow&gt;
+                      &lt;/TableBody&gt;
+                    &lt;/Table&gt;
+                  )}
+
+                  {/* 第三方服务 */}
+                  {costEstimate.breakdown.thirdPartyServices &amp;&amp; costEstimate.breakdown.thirdPartyServices.length &gt; 0 &amp;&amp; (
+                    &lt;div className=&quot;mt-4&quot;&gt;
+                      &lt;p className=&quot;font-medium mb-2 text-sm text-muted-foreground&quot;&gt;第三方服务&lt;/p&gt;
+                      &lt;Table&gt;
+                        &lt;TableBody&gt;
+                          {costEstimate.breakdown.thirdPartyServices.map((service, index) =&gt; (
+                            &lt;TableRow key={index}&gt;
+                              &lt;TableCell&gt;{service.name}&lt;/TableCell&gt;
+                              &lt;TableCell className=&quot;text-right&quot;&gt;
+                                ¥{service.cost.toLocaleString()}
+                              &lt;/TableCell&gt;
+                            &lt;/TableRow&gt;
+                          ))}
+                        &lt;/TableBody&gt;
+                      &lt;/Table&gt;
+                    &lt;/div&gt;
+                  )}
+                &lt;/div&gt;
+              &lt;/&gt;
+            )}
+          &lt;/CardContent&gt;
+        &lt;/Card&gt;
+      )}
+
+      {/* 无数据提示 */}
+      {!costEstimate &amp;&amp; functions.length === 0 &amp;&amp; (
+        &lt;Card&gt;
+          &lt;CardContent className=&quot;py-12&quot;&gt;
+            &lt;div className=&quot;text-center text-muted-foreground&quot;&gt;
+              &lt;FileText className=&quot;mx-auto h-12 w-12 mb-4 opacity-50&quot; /&gt;
+              &lt;p className=&quot;font-medium&quot;&gt;暂无分析数据&lt;/p&gt;
+              &lt;p className=&quot;text-sm mt-1&quot;&gt;
+                请先在需求输入页面进行 AI 分析
+              &lt;/p&gt;
+            &lt;/div&gt;
+          &lt;/CardContent&gt;
+        &lt;/Card&gt;
+      )}
+    &lt;/div&gt;
+  )
+}
+
+function ReportSkeleton() {
+  return (
+    &lt;div className=&quot;space-y-6&quot;&gt;
+      &lt;Card&gt;
+        &lt;CardHeader&gt;
+          &lt;Skeleton className=&quot;h-6 w-32&quot; /&gt;
+        &lt;/CardHeader&gt;
+        &lt;CardContent&gt;
+          &lt;div className=&quot;grid gap-4 md:grid-cols-2&quot;&gt;
+            {[1, 2, 3, 4].map((i) =&gt; (
+              &lt;div key={i}&gt;
+                &lt;Skeleton className=&quot;h-4 w-20 mb-2&quot; /&gt;
+                &lt;Skeleton className=&quot;h-5 w-32&quot; /&gt;
+              &lt;/div&gt;
+            ))}
+          &lt;/div&gt;
+        &lt;/CardContent&gt;
+      &lt;/Card&gt;
+      &lt;Card&gt;
+        &lt;CardHeader&gt;
+          &lt;Skeleton className=&quot;h-6 w-32&quot; /&gt;
+          &lt;Skeleton className=&quot;h-4 w-48&quot; /&gt;
+        &lt;/CardHeader&gt;
+        &lt;CardContent&gt;
+          &lt;Skeleton className=&quot;h-[200px] w-full&quot; /&gt;
+        &lt;/CardContent&gt;
+      &lt;/Card&gt;
+    &lt;/div&gt;
+  )
+}
+</pre>
+            </section>
+            
+</body>
+</html>

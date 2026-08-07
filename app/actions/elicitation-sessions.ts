@@ -2,6 +2,10 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import {
+  buildRawRequirementFromCollectedInfo,
+  convertToParseRequirement,
+} from '@/lib/ai/elicitation/converter'
 import type {
   ElicitationSession,
   ElicitationMessage,
@@ -12,6 +16,17 @@ export interface ActionResult {
   error?: string
   success?: boolean
   data?: unknown
+}
+
+export interface FinalizeElicitationInput {
+  sessionId: string
+  summary?: string
+}
+
+export interface FinalizeElicitationResult {
+  session: ElicitationSession | null
+  resultRequirementId?: string
+  error?: string
 }
 
 /**
@@ -186,6 +201,18 @@ export async function createElicitationSession(
     return null
   }
 
+  const { data: project, error: projectError } = await supabase
+    .from('projects')
+    .select('id, current_requirement_baseline_id')
+    .eq('id', projectId)
+    .eq('created_by', user.id)
+    .maybeSingle()
+
+  if (projectError || !project) {
+    console.error('创建 elicitation 会话前读取项目失败:', projectError)
+    return null
+  }
+
   // 先结束现有的活跃会话
   await supabase
     .from('elicitation_sessions')
@@ -201,6 +228,7 @@ export async function createElicitationSession(
       current_round: 0, // 从 0 开始，表示还没有进行任何轮次
       max_rounds: maxRounds,
       collected_info: {},
+      input_requirement_baseline_id: project.current_requirement_baseline_id,
     })
     .select()
     .single()
@@ -270,16 +298,21 @@ export async function updateElicitationCollectedInfo(
     .from('elicitation_sessions')
     .select('collected_info, current_round')
     .eq('id', sessionId)
-    .single()
+    .eq('status', 'active')
+    .maybeSingle()
 
-  const existingInfo = (session?.collected_info || {}) as ElicitationCollectedInfo
+  if (!session) {
+    return { error: '引导会话不存在、已完成或无权限' }
+  }
+
+  const existingInfo = (session.collected_info || {}) as ElicitationCollectedInfo
 
   // 深度合并（处理数组和嵌套对象）
   const mergedInfo = deepMergeCollectedInfo(existingInfo, info)
 
   // 更新元信息
   mergedInfo._meta = {
-    lastUpdatedRound: session?.current_round || 0,
+    lastUpdatedRound: session.current_round,
     confirmedFields: [
       ...(existingInfo._meta?.confirmedFields || []),
       ...Object.keys(info).filter(k => k !== '_meta'),
@@ -293,6 +326,7 @@ export async function updateElicitationCollectedInfo(
       updated_at: new Date().toISOString(),
     })
     .eq('id', sessionId)
+    .eq('status', 'active')
 
   if (error) {
     console.error('更新 collected_info 失败:', error)
@@ -346,85 +380,111 @@ function deepMergeCollectedInfo(
  */
 export async function advanceElicitationRound(sessionId: string): Promise<{
   session: ElicitationSession | null
-  isComplete: boolean
+  reachedMaxRounds: boolean
+  error?: string
 }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
-    return { session: null, isComplete: false }
+    return { session: null, reachedMaxRounds: false, error: '请先登录' }
   }
 
-  // 获取当前会话
-  const { data: session } = await supabase
-    .from('elicitation_sessions')
-    .select('*')
-    .eq('id', sessionId)
-    .single()
+  const { data, error } = await supabase.rpc('advance_elicitation_round', {
+    p_session_id: sessionId,
+  })
 
-  if (!session) {
-    return { session: null, isComplete: false }
+  if (error) {
+    console.error('推进 elicitation 轮次失败:', error)
+    return { session: null, reachedMaxRounds: false, error: error.message }
   }
 
-  const newRound = session.current_round + 1
-  const isComplete = newRound >= session.max_rounds
-
-  if (isComplete) {
-    // 达到最大轮次，标记完成
-    const { data: updatedSession } = await supabase
-      .from('elicitation_sessions')
-      .update({
-        current_round: newRound,
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-      })
-      .eq('id', sessionId)
-      .select()
-      .single()
-
-    return { session: updatedSession, isComplete: true }
+  const row = Array.isArray(data) ? data[0] : data
+  if (!row) {
+    return { session: null, reachedMaxRounds: false, error: '会话不存在、已结束或无权限' }
   }
 
-  // 进入下一轮
-  const { data: updatedSession } = await supabase
-    .from('elicitation_sessions')
-    .update({ current_round: newRound })
-    .eq('id', sessionId)
-    .select()
-    .single()
-
-  return { session: updatedSession, isComplete: false }
+  const session = await getElicitationSession(sessionId)
+  return {
+    session,
+    reachedMaxRounds: Boolean(row.reached_max_rounds),
+  }
 }
 
 /**
- * 完成 elicitation 会话
+ * 唯一的 Elicitation 完成入口。需求转换和会话完成由数据库事务原子提交。
  */
-export async function completeElicitationSession(
-  sessionId: string
-): Promise<ElicitationSession | null> {
+export async function finalizeElicitationSession({
+  sessionId,
+  summary,
+}: FinalizeElicitationInput): Promise<FinalizeElicitationResult> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
-    return null
+    return { session: null, error: '请先登录' }
   }
 
-  const { data, error } = await supabase
+  const { data: session, error: sessionError } = await supabase
     .from('elicitation_sessions')
-    .update({
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-    })
+    .select('id, project_id, status, collected_info')
     .eq('id', sessionId)
-    .select()
-    .single()
+    .maybeSingle()
+
+  if (sessionError || !session) {
+    return { session: null, error: sessionError?.message || '引导会话不存在或无权限' }
+  }
+
+  if (session.status === 'cancelled') {
+    return { session: null, error: '已取消的引导会话不能完成' }
+  }
+
+  const { data: seedRequirement, error: requirementError } = await supabase
+    .from('requirements')
+    .select('id')
+    .eq('project_id', session.project_id)
+    .neq('source', 'elicitation')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (requirementError) {
+    return { session: null, error: requirementError.message }
+  }
+
+  const collectedInfo = (session.collected_info || {}) as ElicitationCollectedInfo
+  const parsedRequirement = convertToParseRequirement(collectedInfo)
+  const rawRequirement = buildRawRequirementFromCollectedInfo(collectedInfo)
+
+  const { data, error } = await supabase.rpc('finalize_elicitation_session', {
+    p_session_id: sessionId,
+    p_requirement_id: seedRequirement?.id ?? null,
+    p_parsed_content: parsedRequirement,
+    p_raw_content: rawRequirement,
+    p_completion_summary: summary || null,
+  })
 
   if (error) {
     console.error('完成 elicitation 会话失败:', error)
-    return null
+    return { session: null, error: error.message }
   }
 
-  return data
+  const { data: resultRequirement, error: resultRequirementError } = await supabase
+    .from('requirements')
+    .select('id')
+    .eq('elicitation_session_id', sessionId)
+    .maybeSingle()
+
+  if (resultRequirementError || !resultRequirement) {
+    console.error('读取需求澄清结果来源失败:', resultRequirementError)
+    return { session: data as ElicitationSession, error: '需求澄清已完成，但结果来源读取失败' }
+  }
+
+  revalidatePath(`/projects/${session.project_id}`)
+  return {
+    session: data as ElicitationSession,
+    resultRequirementId: resultRequirement.id,
+  }
 }
 
 /**

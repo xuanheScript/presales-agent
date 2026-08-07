@@ -1,8 +1,11 @@
 import { Suspense } from 'react'
+import Link from 'next/link'
+import { History } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { CostSummary, CostSummaryEmpty } from '@/components/project/cost-summary'
-import { getCostEstimate } from '@/app/actions/costs'
+import { getEstimateVersionSnapshot } from '@/app/actions/estimate-versions'
 
 interface EstimationPageProps {
   params: Promise<{ id: string }>
@@ -13,11 +16,19 @@ export default async function EstimationPage({ params }: EstimationPageProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">成本估算</h2>
-        <p className="text-muted-foreground">
-          查看项目的成本估算详情
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">成本估算</h2>
+          <p className="text-muted-foreground">
+            查看项目当前最新不可变估算版本
+          </p>
+        </div>
+        <Button variant="outline" asChild>
+          <Link href={`/projects/${projectId}/estimation/versions`}>
+            <History className="h-4 w-4" />
+            版本历史
+          </Link>
+        </Button>
       </div>
 
       <Suspense fallback={<EstimationSkeleton />}>
@@ -28,7 +39,8 @@ export default async function EstimationPage({ params }: EstimationPageProps) {
 }
 
 async function EstimationContent({ projectId }: { projectId: string }) {
-  const cost = await getCostEstimate(projectId)
+  const snapshot = await getEstimateVersionSnapshot(projectId)
+  const cost = snapshot?.cost || null
 
   if (!cost) {
     return <CostSummaryEmpty />

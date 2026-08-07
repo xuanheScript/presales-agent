@@ -56,11 +56,12 @@ enabled = true
 schema_paths = []
 
 [db.seed]
-# If enabled, seeds the database after migrations during a db reset.
-enabled = true
+# 当前项目使用云端 Supabase，尚未维护可重复执行的 seed.sql。
+# 建立受控种子数据前保持关闭，避免 CLI 查找不存在的 ./seed.sql。
+enabled = false
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+sql_paths = []
 
 [db.network_restrictions]
 # Enable management of network restrictions.
@@ -103,14 +104,12 @@ port = 54324
 [storage]
 enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
-file_size_limit = "50MiB"
+file_size_limit = "500MB"
 
-# Uncomment to configure local storage buckets
-# [storage.buckets.images]
-# public = false
-# file_size_limit = "50MiB"
-# allowed_mime_types = ["image/png", "image/jpeg"]
-# objects_path = "./images"
+[storage.buckets.meeting-audio]
+public = false
+file_size_limit = "500MB"
+allowed_mime_types = ["audio/wav", "audio/x-wav", "audio/wave", "audio/flac", "audio/x-flac", "audio/mpeg", "audio/mp4", "audio/ogg", "audio/webm", "video/mp4"]
 
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]

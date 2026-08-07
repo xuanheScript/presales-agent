@@ -1,7 +1,16 @@
 import { generateText, Output } from 'ai'
 import { z } from 'zod'
-import { defaultModel } from '@/lib/ai/config'
+import type { RunnableConfig } from '@langchain/core/runnables'
+import { defaultModelGateway, type ModelGateway } from '@/lib/ai/model-gateway'
+import {
+  EXECUTION_POLICY,
+  getRunnableSignal,
+  isAbortError,
+  withAbortSignal,
+} from '../execution-policy'
 import { getActiveTemplate } from '@/app/actions/templates'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { findActiveTemplateWithClient } from '@/lib/templates/active-template'
 import { createTelemetryConfig } from '@/lib/observability/langfuse'
 import type { PresalesState, AgentAnalysisResult } from '../state'
 
@@ -59,23 +68,68 @@ const DEFAULT_ANALYSIS_PROMPT = `你是一位经验丰富的售前技术顾问�
 
 请以结构化的 JSON 格式返回分析结果。`
 
-/**
- * 获取需求分析提示词
- * 优先使用数据库中的模板，如果没有则使用默认模板
- */
-async function getAnalysisPrompt(industry?: string | null): Promise<string> {
+export interface AnalysisPromptSnapshot {
+  content: string
+  version: string
+}
+
+type ActiveAnalysisTemplateReader = (
+  industry?: string
+) => ReturnType<typeof getActiveTemplate>
+
+async function createAnalysisPromptSnapshot(
+  readActiveTemplate: ActiveAnalysisTemplateReader,
+  industry?: string | null
+): Promise<AnalysisPromptSnapshot> {
   try {
-    // 尝试获取数据库中的活跃模板
-    const template = await getActiveTemplate('requirement_analysis', industry || undefined)
+    const template = await readActiveTemplate(industry || undefined)
     if (template?.prompt_content) {
       console.log('[Agent] 使用数据库模板:', template.template_name)
-      return template.prompt_content
+      return {
+        content: template.prompt_content,
+        version: `template:${template.id}:${template.version}`,
+      }
     }
   } catch (error) {
     console.warn('[Agent] 获取模板失败，使用默认模板:', error)
   }
 
-  return DEFAULT_ANALYSIS_PROMPT
+  return {
+    content: DEFAULT_ANALYSIS_PROMPT,
+    version: 'requirement-analysis-default-v1',
+  }
+}
+
+/**
+ * 固定本次请求执行使用的需求分析提示词。
+ */
+export async function getAnalysisPromptSnapshot(
+  industry?: string | null
+): Promise<AnalysisPromptSnapshot> {
+  return createAnalysisPromptSnapshot(
+    (templateIndustry) => getActiveTemplate(
+      'requirement_analysis',
+      templateIndustry
+    ),
+    industry
+  )
+}
+
+/**
+ * 固定后台执行使用的需求分析提示词，不依赖 Next.js 请求上下文。
+ */
+export async function getAnalysisPromptSnapshotForWorker(
+  industry?: string | null
+): Promise<AnalysisPromptSnapshot> {
+  const supabase = createAdminClient()
+  return createAnalysisPromptSnapshot(
+    (templateIndustry) => findActiveTemplateWithClient(
+      supabase,
+      'requirement_analysis',
+      templateIndustry
+    ),
+    industry
+  )
 }
 
 /**
@@ -84,10 +138,12 @@ async function getAnalysisPrompt(industry?: string | null): Promise<string> {
  * 使用 AI SDK 的 generateText + Output.object 进行结构化输出
  */
 export async function analyzeNode(
-  state: PresalesState
+  state: PresalesState,
+  config?: RunnableConfig,
+  modelGateway: ModelGateway = defaultModelGateway
 ): Promise<Partial<PresalesState>> {
   // 验证输入
-  if (!state.rawRequirement || state.rawRequirement.trim() === '') {
+  if (!state.canonicalRequirement || state.canonicalRequirement.trim() === '') {
     return {
       error: '需求内容不能为空',
       currentStep: 'analyze',
@@ -95,28 +151,41 @@ export async function analyzeNode(
   }
 
   try {
-    // 获取提示词模板（优先使用数据库中的模板）
-    const promptTemplate = await getAnalysisPrompt()
+    const promptTemplate = state.analysisPromptTemplate
+    if (!promptTemplate) {
+      return {
+        error: '执行缺少固定的需求分析提示词快照',
+        currentStep: 'analyze',
+      }
+    }
 
     // 替换模板变量
     const prompt = promptTemplate
       .replace('{项目描述}', state.projectDescription || '未提供项目描述')
-      .replace('{需求内容}', state.rawRequirement)
-      .replace('{requirement}', state.rawRequirement)
+      .replace('{需求内容}', state.canonicalRequirement)
+      .replace('{requirement}', state.canonicalRequirement)
       .replace('{projectDescription}', state.projectDescription || '未提供项目描述')
 
     // 调用 AI 模型进行分析
-    const { output } = await generateText({
-      model: defaultModel,
-      output: Output.object({
-        schema: requirementAnalysisSchema,
-      }),
-      prompt,
-      experimental_telemetry: createTelemetryConfig('workflow-analyze', {
-        projectId: state.projectId,
-        requirementId: state.requirementId,
-      }),
-    })
+    const { output } = await withAbortSignal(
+      [getRunnableSignal(config)],
+      EXECUTION_POLICY.workflowNodeTimeoutMs,
+      (signal) => generateText({
+        model: modelGateway.model,
+        output: Output.object({
+          schema: requirementAnalysisSchema,
+        }),
+        prompt,
+        abortSignal: signal,
+        maxRetries: modelGateway.maxRetries,
+        providerOptions: modelGateway.profile.providerOptions,
+        experimental_telemetry: createTelemetryConfig('workflow-analyze', {
+          projectId: state.projectId,
+          requirementBaselineId: state.requirementBaselineId,
+          executionId: String(config?.configurable?.executionId || 'none'),
+        }),
+      })
+    )
 
     // 验证输出
     if (!output) {
@@ -152,6 +221,10 @@ export async function analyzeNode(
       error: null,
     }
   } catch (error) {
+    if (isAbortError(error, getRunnableSignal(config))) {
+      throw error
+    }
+
     console.error('[Agent] 需求分析失败:', error)
 
     return {

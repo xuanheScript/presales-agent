@@ -29,34 +29,35 @@ interface CostSummaryProps {
 /**
  * 格式化金额
  */
-function formatCurrency(amount: number): string {
-  return `¥${amount.toLocaleString('zh-CN')}`
+function formatCurrency(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat('zh-CN', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2,
+    }).format(amount)
+  } catch {
+    return `${currency} ${amount.toLocaleString('zh-CN')}`
+  }
 }
 
 /**
  * 判断是否为新版本数据（有 roleBreakdown）
  */
 function isNewVersionData(cost: CostEstimate): boolean {
-  return !!(cost.breakdown?.roleBreakdown && cost.breakdown.roleBreakdown.length > 0)
+  return cost.rule_version === 'formal-workflow-v1'
+    || !!(cost.breakdown?.roleBreakdown && cost.breakdown.roleBreakdown.length > 0)
 }
 
 export function CostSummary({ cost }: CostSummaryProps) {
   const isNewVersion = isNewVersionData(cost)
+  const currency = cost.currency || 'CNY'
 
   // 计算百分比和缓冲金额
   const baseCost = cost.labor_cost + cost.service_cost + cost.infrastructure_cost
 
-  // 新版本：缓冲通过系数应用到工时，需要反算缓冲金额
-  // 缓冲金额 = (bufferedDays - baseDays) * 日均成本
-  let bufferAmount = 0
-  if (isNewVersion && cost.base_days && cost.buffered_days && cost.buffer_coefficient) {
-    // 反算日均成本
-    const dailyCost = cost.labor_cost / cost.buffered_days
-    bufferAmount = Math.round((cost.buffered_days - cost.base_days) * dailyCost)
-  } else {
-    // 旧版本：缓冲是额外加在成本上的
-    bufferAmount = cost.total_cost - baseCost
-  }
+  // 旧版本的缓冲是总成本中的独立加项；正式规则 v1 已将缓冲折算进人力成本。
+  const legacyBufferAmount = isNewVersion ? 0 : cost.total_cost - baseCost
 
   const laborPercent = baseCost > 0 ? Math.round((cost.labor_cost / baseCost) * 100) : 0
   const servicePercent = baseCost > 0 ? Math.round((cost.service_cost / baseCost) * 100) : 0
@@ -76,7 +77,7 @@ export function CostSummary({ cost }: CostSummaryProps) {
             项目总成本（含风险缓冲）
           </CardDescription>
           <CardTitle className="text-4xl font-bold">
-            {formatCurrency(cost.total_cost)}
+            {formatCurrency(cost.total_cost, currency)}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -135,7 +136,7 @@ export function CostSummary({ cost }: CostSummaryProps) {
               <Users className="h-4 w-4 text-blue-500" />
               <CardDescription>人力成本</CardDescription>
             </div>
-            <CardTitle className="text-2xl">{formatCurrency(cost.labor_cost)}</CardTitle>
+            <CardTitle className="text-2xl">{formatCurrency(cost.labor_cost, currency)}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between text-sm">
@@ -151,7 +152,7 @@ export function CostSummary({ cost }: CostSummaryProps) {
               <Server className="h-4 w-4 text-green-500" />
               <CardDescription>服务成本</CardDescription>
             </div>
-            <CardTitle className="text-2xl">{formatCurrency(cost.service_cost)}</CardTitle>
+            <CardTitle className="text-2xl">{formatCurrency(cost.service_cost, currency)}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between text-sm">
@@ -167,7 +168,7 @@ export function CostSummary({ cost }: CostSummaryProps) {
               <TrendingUp className="h-4 w-4 text-orange-500" />
               <CardDescription>基础设施</CardDescription>
             </div>
-            <CardTitle className="text-2xl">{formatCurrency(cost.infrastructure_cost)}</CardTitle>
+            <CardTitle className="text-2xl">{formatCurrency(cost.infrastructure_cost, currency)}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between text-sm">
@@ -183,7 +184,7 @@ export function CostSummary({ cost }: CostSummaryProps) {
         <CardHeader>
           <CardTitle>成本明细</CardTitle>
           <CardDescription>
-            {isNewVersion ? '按角色分解的人力成本' : '各阶段成本分解'}
+            {isNewVersion ? '功能开发按角色列示，额外工作单独列示，两部分合计为人力成本' : '各阶段成本分解'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -192,7 +193,7 @@ export function CostSummary({ cost }: CostSummaryProps) {
             <div>
               <h4 className="font-medium mb-3 flex items-center gap-2">
                 <UserCheck className="h-4 w-4" />
-                角色成本分解
+                功能开发角色成本
               </h4>
               <Table>
                 <TableHeader>
@@ -209,7 +210,7 @@ export function CostSummary({ cost }: CostSummaryProps) {
                       <TableCell className="font-medium">{role.role}</TableCell>
                       <TableCell className="text-right">{role.days}</TableCell>
                       <TableCell className="text-right">{role.headcount}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(role.cost)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(role.cost, currency)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -236,7 +237,7 @@ export function CostSummary({ cost }: CostSummaryProps) {
                       <TableRow key={index}>
                         <TableCell className="font-medium">{work.workItem}</TableCell>
                         <TableCell className="text-right">{work.days}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(work.cost)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(work.cost, currency)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -253,19 +254,23 @@ export function CostSummary({ cost }: CostSummaryProps) {
                 <CostLine
                   label="开发费用"
                   amount={cost.breakdown?.development || 0}
+                  currency={currency}
                 />
                 <CostLine
                   label="测试费用"
                   amount={cost.breakdown?.testing || 0}
+                  currency={currency}
                 />
                 <CostLine
                   label="部署集成费用"
                   amount={cost.breakdown?.deployment || 0}
+                  currency={currency}
                 />
                 {(cost.breakdown?.maintenance ?? 0) > 0 && (
                   <CostLine
                     label="维护费用"
                     amount={cost.breakdown?.maintenance || 0}
+                    currency={currency}
                   />
                 )}
               </div>
@@ -285,6 +290,7 @@ export function CostSummary({ cost }: CostSummaryProps) {
                         key={index}
                         label={service.name}
                         amount={service.cost}
+                        currency={currency}
                       />
                     ))}
                   </div>
@@ -294,7 +300,7 @@ export function CostSummary({ cost }: CostSummaryProps) {
 
           <Separator />
 
-          {/* 风险缓冲 */}
+          {/* 风险缓冲说明：正式规则已包含在人力成本中，不作为总计加项 */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Shield className="h-4 w-4 text-yellow-500" />
@@ -303,7 +309,9 @@ export function CostSummary({ cost }: CostSummaryProps) {
               </span>
             </div>
             <span className="font-medium text-yellow-600">
-              +{formatCurrency(bufferAmount)}
+              {isNewVersion
+                ? `已计入人力成本${cost.breakdown?.bufferDays !== undefined ? `（+${cost.breakdown.bufferDays} 人天）` : ''}`
+                : `+${formatCurrency(legacyBufferAmount, currency)}`}
             </span>
           </div>
 
@@ -313,7 +321,7 @@ export function CostSummary({ cost }: CostSummaryProps) {
           <div className="flex items-center justify-between pt-2">
             <span className="text-lg font-bold">总计</span>
             <span className="text-lg font-bold text-primary">
-              {formatCurrency(cost.total_cost)}
+              {formatCurrency(cost.total_cost, currency)}
             </span>
           </div>
         </CardContent>
@@ -338,7 +346,7 @@ export function CostSummary({ cost }: CostSummaryProps) {
             根据项目类型和复杂度自动评估（1.2x - 2.0x），用于应对需求变更、技术风险等不确定因素。
           </p>
           <p className="text-xs border-t pt-3 mt-3">
-            * 以上报价仅供参考，实际费用可能因需求变更、市场因素等有所调整。
+            * 以上为内部估算成本，不包含利润、折扣和税费，不应直接作为对外报价。
           </p>
         </CardContent>
       </Card>
@@ -346,11 +354,19 @@ export function CostSummary({ cost }: CostSummaryProps) {
   )
 }
 
-function CostLine({ label, amount }: { label: string; amount: number }) {
+function CostLine({
+  label,
+  amount,
+  currency,
+}: {
+  label: string
+  amount: number
+  currency: string
+}) {
   return (
     <div className="flex items-center justify-between text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <span>{formatCurrency(amount)}</span>
+      <span>{formatCurrency(amount, currency)}</span>
     </div>
   )
 }

@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(npx next lint)",
-      "Bash(npx next lint --)"
+      "Bash(npx next lint --)",
+      "Bash(pnpm lint *)",
+      "Bash(python \"/Users/lijie/.claude/plugins/cache/anthropic-agent-skills/document-skills/unknown/skills/webapp-testing/scripts/with_server.py\" --help)",
+      "Bash(python3 \"/Users/lijie/.claude/plugins/cache/anthropic-agent-skills/document-skills/unknown/skills/webapp-testing/scripts/with_server.py\" --help)",
+      "Bash(pnpm --version)",
+      "Bash(pnpm exec *)",
+      "Bash(python3 -c \"import playwright; print\\('python-playwright available'\\)\")",
+      "mcp__chrome-devtools__new_page",
+      "Bash(python3 -)"
     ]
   }
 }

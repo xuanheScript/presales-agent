@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { findActiveTemplateWithClient } from '@/lib/templates/active-template'
 import { revalidatePath } from 'next/cache'
 import type { Template, TemplateType } from '@/types'
 
@@ -53,31 +54,16 @@ export async function getActiveTemplate(
 ): Promise<Template | null> {
   const supabase = await createClient()
 
-  let query = supabase
-    .from('templates')
-    .select('*')
-    .eq('template_type', templateType)
-    .eq('is_active', true)
-
-  if (industry) {
-    query = query.eq('industry', industry)
-  }
-
-  const { data, error } = await query
-    .order('version', { ascending: false })
-    .limit(1)
-    .single()
-
-  if (error) {
-    // 如果找不到特定行业的模板，尝试获取通用模板
-    if (industry) {
-      return getActiveTemplate(templateType)
-    }
+  try {
+    return await findActiveTemplateWithClient(
+      supabase,
+      templateType,
+      industry
+    )
+  } catch (error) {
     console.error('获取活跃模板失败:', error)
     return null
   }
-
-  return data
 }
 
 /**

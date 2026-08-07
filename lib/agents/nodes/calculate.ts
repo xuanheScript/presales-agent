@@ -1,13 +1,11 @@
+import type { RunnableConfig } from '@langchain/core/runnables'
 import { DEFAULT_CONFIG } from '@/constants'
+import {
+  FORMAL_COST_RULE_VERSION,
+  calculateFormalCostV1,
+} from '@/lib/domain/costing'
+import { getRunnableSignal, throwIfAborted } from '../execution-policy'
 import type { PresalesState, AgentCostEstimate } from '../state'
-
-/**
- * 四舍五入到指定小数位
- */
-function roundToDecimal(value: number, decimals: number): number {
-  const factor = Math.pow(10, decimals)
-  return Math.round(value * factor) / factor
-}
 
 /**
  * 成本计算节点
@@ -22,8 +20,10 @@ function roundToDecimal(value: number, decimals: number): number {
  * 4. 输出按角色汇总的成本
  */
 export async function calculateNode(
-  state: PresalesState
+  state: PresalesState,
+  config?: RunnableConfig
 ): Promise<Partial<PresalesState>> {
+  throwIfAborted(getRunnableSignal(config))
   // 验证前置条件
   if (!state.functions || state.functions.length === 0) {
     return {
@@ -40,104 +40,67 @@ export async function calculateNode(
   }
 
   try {
-    const { roleSummary, additionalWork, bufferCoefficient } = state.estimation
+    const { bufferCoefficient } = state.estimation
+    const laborCostPerDay = state.systemConfig?.laborCostPerDay ?? DEFAULT_CONFIG.LABOR_COST_PER_DAY
+    const workingHoursPerDay = state.systemConfig?.workingHoursPerDay ?? DEFAULT_CONFIG.WORKING_HOURS_PER_DAY
 
-    // 从系统配置获取参数（优先使用数据库配置，否则使用默认值）
-    const laborCostPerDay = state.systemConfig?.laborCostPerDay || DEFAULT_CONFIG.LABOR_COST_PER_DAY
-
-    // 1. 计算基础总人天（功能模块 + 额外工作）
-    const moduleTotalDays = state.functions.reduce(
-      (sum, f) => sum + f.roleEstimates.reduce((s, r) => s + r.days, 0),
-      0
-    )
-    const additionalTotalDays = additionalWork.reduce((sum, w) => sum + w.days, 0)
-    const baseDays = moduleTotalDays + additionalTotalDays
-
-    // 2. 应用缓冲系数
-    const bufferedDays = roundToDecimal(baseDays * bufferCoefficient, 1)
-
-    console.log('[Agent] 成本计算:', {
-      moduleTotalDays,
-      additionalTotalDays,
-      baseDays,
-      bufferCoefficient,
-      bufferedDays,
+    const result = calculateFormalCostV1({
+      ruleVersion: FORMAL_COST_RULE_VERSION,
+      currency: state.systemConfig?.currency ?? DEFAULT_CONFIG.CURRENCY,
       laborCostPerDay,
+      workingHoursPerDay,
+      bufferCoefficient,
+      roles: state.identifiedRoles.map((role) => ({
+        role: role.role,
+        headcount: role.headcount,
+      })),
+      functions: state.functions.map((fn) => ({
+        roleEfforts: fn.roleEstimates,
+      })),
+      additionalWork: state.additionalWork,
     })
 
-    // 3. 按角色计算成本（应用缓冲系数）
-    const roleBreakdown = roleSummary.map((r) => ({
-      role: r.role,
-      days: roundToDecimal(r.totalDays * bufferCoefficient, 1),
-      cost: Math.round(r.totalDays * bufferCoefficient * laborCostPerDay),
-      headcount: r.headcount,
-    }))
-
-    // 4. 额外工作项成本
-    const additionalWorkBreakdown = additionalWork.map((w) => ({
-      workItem: w.workItem,
-      days: roundToDecimal(w.days * bufferCoefficient, 1),
-      cost: Math.round(w.days * bufferCoefficient * laborCostPerDay),
-    }))
-
-    // 5. 计算人力成本
-    const laborCost = Math.round(bufferedDays * laborCostPerDay)
-
-    // 6. 计算第三方服务成本（根据项目规模估算）
-    const thirdPartyServices: { name: string; cost: number }[] = []
-
-    // 根据团队规模估算云服务成本
-    const teamSize = roleSummary.reduce((sum, r) => sum + r.headcount, 0)
-    // 估算项目周期（按最大角色工时 / 人数计算）
-    const maxRoleDays = Math.max(...roleSummary.map((r) => r.totalDays / r.headcount))
-    const estimatedDuration = Math.ceil(maxRoleDays * bufferCoefficient)
-
-    // 开发环境费用
-    if (teamSize >= 3) {
-      thirdPartyServices.push({
-        name: '云服务器（开发测试环境）',
-        cost: Math.ceil(estimatedDuration / 30) * 2000, // 每月约 2000 元
-      })
-    }
-
-    // CI/CD 工具费用
-    if (baseDays > 100) {
-      thirdPartyServices.push({
-        name: 'CI/CD 工具服务',
-        cost: Math.ceil(estimatedDuration / 30) * 500,
-      })
-    }
-
-    // 计算服务成本
-    const serviceCost = thirdPartyServices.reduce((sum, s) => sum + s.cost, 0)
-
-    // 基础设施成本（预留）
-    const infrastructureCost = 0
-
-    // 总成本
-    const totalCost = laborCost + serviceCost + infrastructureCost
-
-    // 构建成本估算结果
     const cost: AgentCostEstimate = {
-      baseDays: roundToDecimal(baseDays, 1),
-      bufferedDays,
-      bufferCoefficient,
-      roleBreakdown,
-      additionalWorkBreakdown,
-      laborCost,
-      serviceCost,
-      infrastructureCost,
-      totalCost,
-      thirdPartyServices,
+      ruleVersion: result.ruleVersion,
+      servicePolicyVersion: result.servicePolicyVersion,
+      currency: result.currency,
+      laborCostPerDay: result.laborCostPerDay,
+      workingHoursPerDay: result.workingHoursPerDay,
+      baseDays: result.baseDays,
+      bufferDays: result.bufferDays,
+      bufferedDays: result.bufferedDays,
+      bufferCoefficient: result.bufferCoefficient,
+      estimatedDurationDays: result.estimatedDurationDays,
+      staffingByRole: result.staffingByRole,
+      roleBreakdown: result.functionalRoleBreakdown.map((role) => ({
+        role: role.role,
+        days: role.bufferedDays,
+        baseDays: role.baseDays,
+        cost: role.cost,
+        headcount: role.headcount,
+      })),
+      additionalWorkBreakdown: result.additionalWorkBreakdown.map((work) => ({
+        workItem: work.workItem,
+        days: work.bufferedDays,
+        baseDays: work.baseDays,
+        cost: work.cost,
+      })),
+      laborCost: result.laborCost,
+      serviceCost: result.serviceCost,
+      infrastructureCost: result.infrastructureCost,
+      totalCost: result.totalCost,
+      thirdPartyServices: result.thirdPartyServices,
+      reconciliation: result.reconciliation,
     }
 
     console.log('[Agent] 成本计算完成:', {
-      baseDays,
-      bufferedDays,
-      laborCost,
-      serviceCost,
-      totalCost,
-      rolesCount: roleBreakdown.length,
+      ruleVersion: result.ruleVersion,
+      baseDays: result.baseDays,
+      bufferedDays: result.bufferedDays,
+      laborCost: result.laborCost,
+      serviceCost: result.serviceCost,
+      totalCost: result.totalCost,
+      rolesCount: result.functionalRoleBreakdown.length,
     })
 
     return {

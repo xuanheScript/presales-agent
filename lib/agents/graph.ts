@@ -1,5 +1,12 @@
 import { StateGraph, START, END } from '@langchain/langgraph'
 import {
+  createManagedAbortSignal,
+  EXECUTION_POLICY,
+  isAbortError,
+  withAbortSignal,
+  type WorkflowRunOptions,
+} from './execution-policy'
+import {
   PresalesStateAnnotation,
   createInitialState,
   extractWorkflowResult,
@@ -7,7 +14,6 @@ import {
   type WorkflowResult,
   type WorkflowSystemConfig,
 } from './state'
-import { analyzeNode } from './nodes/analyze'
 import { breakdownNode } from './nodes/breakdown'
 import { estimateNode } from './nodes/estimate'
 import { calculateNode } from './nodes/calculate'
@@ -43,25 +49,17 @@ function shouldContinue(state: PresalesState): string {
  * 创建售前成本估算工作流图
  *
  * 工作流程：
- * START → analyze → breakdown → estimate → calculate → END
+ * START → breakdown（消费全文 discovery 并完成角色工时扩展）→ estimate → calculate → END
  *
  * 每个节点都可能因错误提前终止工作流
  */
 const workflow = new StateGraph(PresalesStateAnnotation)
-  // 添加节点
-  .addNode('analyze', analyzeNode)
   .addNode('breakdown', breakdownNode)
   .addNode('estimate', estimateNode)
   .addNode('calculate', calculateNode)
 
-  // 定义边：从 START 到 analyze
-  .addEdge(START, 'analyze')
-
-  // analyze 节点的条件路由
-  .addConditionalEdges('analyze', shouldContinue, {
-    breakdown: 'breakdown',
-    end: END,
-  })
+  // 统一 Map 在 breakdown 内同时产出 analysis 与 functions。
+  .addEdge(START, 'breakdown')
 
   // breakdown 节点的条件路由
   .addConditionalEdges('breakdown', shouldContinue, {
@@ -89,23 +87,29 @@ export const presalesGraph = workflow.compile()
  * 运行售前成本估算工作流
  *
  * @param projectId - 项目 ID
- * @param requirementId - 需求 ID
- * @param rawRequirement - 原始需求文本
+ * @param requirementBaselineId - 需求基线 ID
+ * @param canonicalRequirement - 规范化需求基线正文
  * @param projectDescription - 项目描述
  * @param systemConfig - 系统配置（人天成本、风险缓冲比例等）
  * @returns 工作流执行结果
  */
 export async function runPresalesWorkflow(
   projectId: string,
-  requirementId: string,
-  rawRequirement: string,
+  requirementBaselineId: string,
+  canonicalRequirement: string,
   projectDescription: string = '',
-  systemConfig: WorkflowSystemConfig | null = null
+  systemConfig: WorkflowSystemConfig | null = null,
+  options: WorkflowRunOptions = {},
+  analysisPromptTemplate: string = '',
+  prefetchedDiscovery: {
+    analysis: NonNullable<PresalesState['analysis']>
+    functions: PresalesState['functions']
+  } | null = null
 ): Promise<WorkflowResult> {
   console.log('[Graph] 开始执行售前成本估算工作流:', {
     projectId,
-    requirementId,
-    requirementLength: rawRequirement.length,
+    requirementBaselineId,
+    requirementLength: canonicalRequirement.length,
     systemConfig,
   })
 
@@ -113,29 +117,39 @@ export async function runPresalesWorkflow(
 
   try {
     // 创建初始状态
-    const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription, systemConfig)
+    const initialState = createInitialState(
+      projectId,
+      requirementBaselineId,
+      canonicalRequirement,
+      projectDescription,
+      systemConfig,
+      analysisPromptTemplate,
+      prefetchedDiscovery
+    )
 
-    // 执行工作流
-    const finalState = await presalesGraph.invoke(initialState)
-
-    const duration = Date.now() - startTime
-    console.log('[Graph] 工作流执行完成:', {
-      duration: `${duration}ms`,
-      success: !finalState.error,
-      hasAnalysis: !!finalState.analysis,
-      functionsCount: finalState.functions?.length || 0,
-      hasEstimation: !!finalState.estimation,
-      hasCost: !!finalState.cost,
-    })
-
-    // 提取并返回结果
-    return extractWorkflowResult(finalState)
+    return await withAbortSignal(
+      [options.signal],
+      options.timeoutMs ?? EXECUTION_POLICY.presalesRouteTimeoutMs,
+      async (signal) => {
+        const finalState = await presalesGraph.invoke(initialState, {
+          signal,
+          configurable: {
+            executionId: options.executionId,
+          },
+        })
+        return extractWorkflowResult(finalState)
+      }
+    )
   } catch (error) {
     const duration = Date.now() - startTime
     console.error('[Graph] 工作流执行失败:', {
       duration: `${duration}ms`,
       error,
     })
+
+    if (isAbortError(error, options.signal)) {
+      throw error
+    }
 
     return {
       success: false,
@@ -154,43 +168,68 @@ export async function runPresalesWorkflow(
  * 流式执行售前成本估算工作流
  *
  * @param projectId - 项目 ID
- * @param requirementId - 需求 ID
- * @param rawRequirement - 原始需求文本
+ * @param requirementBaselineId - 需求基线 ID
+ * @param canonicalRequirement - 规范化需求基线正文
  * @param projectDescription - 项目描述
  * @param systemConfig - 系统配置（人天成本、风险缓冲比例等）
  * @returns AsyncIterable 流式状态更新
  */
 export async function* streamPresalesWorkflow(
   projectId: string,
-  requirementId: string,
-  rawRequirement: string,
+  requirementBaselineId: string,
+  canonicalRequirement: string,
   projectDescription: string = '',
-  systemConfig: WorkflowSystemConfig | null = null
+  systemConfig: WorkflowSystemConfig | null = null,
+  options: WorkflowRunOptions = {},
+  analysisPromptTemplate: string = '',
+  prefetchedDiscovery: {
+    analysis: NonNullable<PresalesState['analysis']>
+    functions: PresalesState['functions']
+  }
 ): AsyncIterable<{ step: string; state: Partial<PresalesState> }> {
   console.log('[Graph] 开始流式执行工作流')
 
-  const initialState = createInitialState(projectId, requirementId, rawRequirement, projectDescription, systemConfig)
+  const initialState = createInitialState(
+    projectId,
+    requirementBaselineId,
+    canonicalRequirement,
+    projectDescription,
+    systemConfig,
+    analysisPromptTemplate,
+    prefetchedDiscovery
+  )
+  const managed = createManagedAbortSignal(
+    [options.signal],
+    options.timeoutMs ?? EXECUTION_POLICY.presalesRouteTimeoutMs
+  )
 
-  // 使用 stream 方法获取状态更新流
-  const stream = await presalesGraph.stream(initialState, {
-    streamMode: 'values',
-  })
-
-  for await (const state of stream) {
-    yield {
-      step: state.currentStep,
-      state: {
-        currentStep: state.currentStep,
-        analysis: state.analysis,
-        functions: state.functions,
-        identifiedRoles: state.identifiedRoles,
-        additionalWork: state.additionalWork,
-        estimation: state.estimation,
-        cost: state.cost,
-        error: state.error,
-        isComplete: state.isComplete,
+  try {
+    const stream = await presalesGraph.stream(initialState, {
+      streamMode: 'values',
+      signal: managed.signal,
+      configurable: {
+        executionId: options.executionId,
       },
+    })
+
+    for await (const state of stream) {
+      yield {
+        step: state.currentStep,
+        state: {
+          currentStep: state.currentStep,
+          analysis: state.analysis,
+          functions: state.functions,
+          identifiedRoles: state.identifiedRoles,
+          additionalWork: state.additionalWork,
+          estimation: state.estimation,
+          cost: state.cost,
+          error: state.error,
+          isComplete: state.isComplete,
+        },
+      }
     }
+  } finally {
+    managed.dispose()
   }
 }
 

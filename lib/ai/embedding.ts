@@ -1,9 +1,9 @@
-/**
- * 阿里 text-embedding-v4 嵌入向量服务
- *
- * 使用 DashScope OpenAI 兼容接口
- * 文档: https://help.aliyun.com/zh/model-studio/text-embedding-synchronous-api
- */
+import {
+  EXECUTION_POLICY,
+  isAbortError,
+  throwIfAborted,
+  withAbortSignal,
+} from '@/lib/agents/execution-policy'
 
 const DASHSCOPE_API_URL =
   'https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings'
@@ -31,31 +31,117 @@ interface EmbeddingResponse {
   }
 }
 
+export interface EmbeddingRequestOptions {
+  signal?: AbortSignal
+  timeoutMs?: number
+  maxRetries?: number
+  traceMetadata?: Record<string, string | number | boolean | string[]>
+  fetch?: typeof globalThis.fetch
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>
+}
+
+export class EmbeddingApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message)
+    this.name = 'EmbeddingApiError'
+  }
+}
+
+function isRetryableError(error: unknown): boolean {
+  if (error instanceof EmbeddingApiError) {
+    return error.status === 408 || error.status === 429 || error.status >= 500
+  }
+
+  return error instanceof TypeError
+}
+
+function retryDelay(attempt: number): number {
+  return Math.min(250 * 2 ** attempt, 1_000)
+}
+
+async function waitForRetry(ms: number, signal: AbortSignal): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason)
+      return
+    }
+
+    const cleanup = () => signal.removeEventListener('abort', onAbort)
+    const timeout = setTimeout(() => {
+      cleanup()
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timeout)
+      cleanup()
+      reject(signal.reason)
+    }
+
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+async function requestEmbeddings(
+  input: string | string[],
+  options: EmbeddingRequestOptions
+): Promise<EmbeddingResponse> {
+  return withAbortSignal(
+    [options.signal],
+    options.timeoutMs ?? EXECUTION_POLICY.embeddingTimeoutMs,
+    async (signal) => {
+      const maxRetries = options.maxRetries ?? EXECUTION_POLICY.embeddingMaxRetries
+
+      for (let attempt = 0; ; attempt += 1) {
+        throwIfAborted(signal)
+
+        try {
+          const request = options.fetch ?? globalThis.fetch
+          const response = await request(DASHSCOPE_API_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${getApiKey()}`,
+            },
+            body: JSON.stringify({
+              model: EMBEDDING_MODEL,
+              input,
+              dimensions: EMBEDDING_DIMENSIONS,
+            }),
+            signal,
+          })
+
+          if (!response.ok) {
+            const errorText = await response.text()
+            throw new EmbeddingApiError(
+              `Embedding API 调用失败 (${response.status}): ${errorText}`,
+              response.status
+            )
+          }
+
+          return await response.json() as EmbeddingResponse
+        } catch (error) {
+          if (isAbortError(error, signal) || attempt >= maxRetries || !isRetryableError(error)) {
+            throw error
+          }
+
+          await (options.sleep ?? waitForRetry)(retryDelay(attempt), signal)
+        }
+      }
+    }
+  )
+}
+
 /**
  * 生成单条文本的 embedding 向量
  */
-export async function generateEmbedding(text: string): Promise<number[]> {
-  const response = await fetch(DASHSCOPE_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${getApiKey()}`,
-    },
-    body: JSON.stringify({
-      model: EMBEDDING_MODEL,
-      input: text,
-      dimensions: EMBEDDING_DIMENSIONS,
-    }),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(
-      `Embedding API 调用失败 (${response.status}): ${errorText}`
-    )
-  }
-
-  const result: EmbeddingResponse = await response.json()
+export async function generateEmbedding(
+  text: string,
+  options: EmbeddingRequestOptions = {}
+): Promise<number[]> {
+  const result = await requestEmbeddings(text, options)
   return result.data[0].embedding
 }
 
@@ -63,36 +149,16 @@ export async function generateEmbedding(text: string): Promise<number[]> {
  * 批量生成 embedding 向量（每次最多 10 条）
  */
 export async function generateEmbeddings(
-  texts: string[]
+  texts: string[],
+  options: EmbeddingRequestOptions = {}
 ): Promise<number[][]> {
   if (texts.length === 0) return []
   if (texts.length > 10) {
     throw new Error('批量 embedding 每次最多 10 条')
   }
 
-  const response = await fetch(DASHSCOPE_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${getApiKey()}`,
-    },
-    body: JSON.stringify({
-      model: EMBEDDING_MODEL,
-      input: texts,
-      dimensions: EMBEDDING_DIMENSIONS,
-    }),
-  })
+  const result = await requestEmbeddings(texts, options)
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(
-      `Embedding API 批量调用失败 (${response.status}): ${errorText}`
-    )
-  }
-
-  const result: EmbeddingResponse = await response.json()
-
-  // 按 index 排序确保顺序一致
   return result.data
     .sort((a, b) => a.index - b.index)
     .map((item) => item.embedding)

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>售前成本估算 Agent 工作流证据</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f6f8fb;
+      color: #111827;
+    }
+    body { margin: 0; padding: 48px; }
+    .page { max-width: 1280px; margin: 0 auto; }
+    .hero { background: linear-gradient(135deg, #0f172a, #1d4ed8); color: white; border-radius: 28px; padding: 42px 48px; box-shadow: 0 24px 80px rgba(15, 23, 42, .22); }
+    .eyebrow { letter-spacing: .18em; text-transform: uppercase; opacity: .78; font-size: 13px; font-weight: 700; }
+    h1 { margin: 14px 0 12px; font-size: 42px; line-height: 1.16; }
+    .subtitle { margin: 0; font-size: 20px; line-height: 1.7; opacity: .9; max-width: 900px; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-top: 28px; }
+    .card { background: white; border: 1px solid #e5e7eb; border-radius: 22px; padding: 24px; min-height: 220px; box-shadow: 0 14px 40px rgba(15, 23, 42, .08); position: relative; }
+    .step { width: 40px; height: 40px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; display: grid; place-items: center; font-weight: 800; margin-bottom: 18px; }
+    .card h2 { margin: 0 0 12px; font-size: 22px; }
+    .card p { margin: 0; line-height: 1.6; color: #4b5563; font-size: 15px; }
+    .arrow { position: absolute; right: -24px; top: 100px; width: 30px; height: 30px; color: #2563eb; font-size: 30px; z-index: 3; }
+    .footer { display: grid; grid-template-columns: 1.1fr .9fr; gap: 20px; margin-top: 24px; }
+    .panel { background: white; border: 1px solid #e5e7eb; border-radius: 22px; padding: 24px; box-shadow: 0 14px 40px rgba(15, 23, 42, .06); }
+    .panel h3 { margin: 0 0 12px; font-size: 20px; }
+    ul { margin: 0; padding-left: 20px; color: #374151; line-height: 1.8; }
+    .code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: #0f172a; color: #e5e7eb; border-radius: 16px; padding: 18px; line-height: 1.7; font-size: 14px; }
+    .badge { display: inline-block; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; margin-right: 8px; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="eyebrow">Presales Agent Evidence</div>
+      <h1>多 Agent 长链推理：从客户需求到成本报价</h1>
+      <p class="subtitle">系统基于 LangGraph 编排四阶段 Agent 工作流，结合 AI SDK 结构化输出、RAG 历史工时参考和流式进度展示，将非结构化需求转化为可追溯的售前估算报告。</p>
+    </section>
+
+    <section class="grid" aria-label="Agent 工作流">
+      <article class="card">
+        <div class="step">1</div>
+        <h2>需求分析</h2>
+        <p>识别项目类型、业务目标、核心功能、技术栈、非功能性需求和潜在风险。</p>
+        <div class="arrow">→</div>
+      </article>
+      <article class="card">
+        <div class="step">2</div>
+        <h2>功能拆解</h2>
+        <p>拆分模块、识别角色、评估各角色人天，并注入历史验证参考作为 RAG 增强。</p>
+        <div class="arrow">→</div>
+      </article>
+      <article class="card">
+        <div class="step">3</div>
+        <h2>工时评估</h2>
+        <p>按角色汇总工时，结合风险、复杂度、第三方对接和合规要求生成缓冲系数。</p>
+        <div class="arrow">→</div>
+      </article>
+      <article class="card">
+        <div class="step">4</div>
+        <h2>成本计算</h2>
+        <p>基于人天成本、风险缓冲和系统配置计算总成本，并输出人员配置与报价结果。</p>
+      </article>
+    </section>
+
+    <section class="footer">
+      <div class="panel">
+        <h3>项目解决的核心痛点</h3>
+        <ul>
+          <li>售前需求分析依赖人工经验，耗时且不稳定。</li>
+          <li>功能拆解和工时估算口径不统一，报价难复盘。</li>
+          <li>历史项目经验分散，难以复用到新项目估算。</li>
+          <li>客户需求不完整，需要 AI 主动追问和补齐信息。</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>代码证据</h3>
+        <p><span class="badge">LangGraph</span><span class="badge">AI SDK</span><span class="badge">RAG</span></p>
+        <div class="code">lib/agents/graph.ts<br/>START → analyze → breakdown → estimate → calculate → END<br/><br/>app/actions/estimate-references.ts<br/>embedding 向量检索历史估算参考</div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

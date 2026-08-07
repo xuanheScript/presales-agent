@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,8 @@ import { createRequirement } from '@/app/actions/requirements'
 interface FileUploadProps {
   projectId: string
   onParsed?: (content: string) => void
+  onSaved?: () => void
+  embedded?: boolean
 }
 
 type UploadState = 'idle' | 'validating' | 'parsing' | 'saving' | 'success' | 'error'
@@ -39,7 +41,7 @@ function isValidDocumentType(file: File): boolean {
   return fileName.endsWith('.pdf') || fileName.endsWith('.docx')
 }
 
-export function FileUpload({ projectId, onParsed }: FileUploadProps) {
+export function FileUpload({ projectId, onParsed, onSaved, embedded = false }: FileUploadProps) {
   const router = useRouter()
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -133,33 +135,26 @@ export function FileUpload({ projectId, onParsed }: FileUploadProps) {
     }
   }
 
-  const handleFileSelect = useCallback(
-    (files: FileList | null) => {
-      if (!files || files.length === 0) return
-      const file = files[0]
-      processFile(file)
-    },
-    []
-  )
+  const handleFileSelect = (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    void processFile(files[0])
+  }
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault()
-      setIsDragging(false)
-      handleFileSelect(e.dataTransfer.files)
-    },
-    [handleFileSelect]
-  )
-
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    setIsDragging(true)
-  }, [])
-
-  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     setIsDragging(false)
-  }, [])
+    handleFileSelect(e.dataTransfer.files)
+  }
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }
 
   const handleSaveRequirement = async () => {
     if (!uploadedFile?.content) return
@@ -183,10 +178,11 @@ export function FileUpload({ projectId, onParsed }: FileUploadProps) {
         return
       }
 
-      toast.success('需求已保存')
+      toast.success('需求来源已保存')
       router.refresh()
       resetUpload()
-    } catch (error) {
+      onSaved?.()
+    } catch {
       toast.error('保存失败')
       setUploadedFile((prev) => ({
         ...prev!,
@@ -228,15 +224,8 @@ export function FileUpload({ projectId, onParsed }: FileUploadProps) {
     }
   }
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>文档上传</CardTitle>
-        <CardDescription>
-          上传 Word (.docx) 或 PDF (.pdf) 格式的需求文档
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+  const content = (
+    <CardContent className={embedded ? 'space-y-4 px-0 pb-0' : 'space-y-4'}>
         {/* 上传区域 */}
         {!uploadedFile && (
           <div
@@ -335,6 +324,19 @@ export function FileUpload({ projectId, onParsed }: FileUploadProps) {
           </div>
         )}
       </CardContent>
+  )
+
+  if (embedded) return content
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>文档上传</CardTitle>
+        <CardDescription>
+          上传 Word (.docx) 或 PDF (.pdf) 格式的需求文档
+        </CardDescription>
+      </CardHeader>
+      {content}
     </Card>
   )
 }

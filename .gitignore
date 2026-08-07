@@ -37,6 +37,19 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Trigger.dev local development files
+/.trigger/
+
+# python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# FunASR local runtime data
+/services/funasr/work/
+/services/funasr/models/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

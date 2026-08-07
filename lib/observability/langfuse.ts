@@ -6,6 +6,7 @@
  */
 
 import { LangfuseSpanProcessor, type ShouldExportSpan } from '@langfuse/otel'
+import { startActiveObservation, type LangfuseSpan } from '@langfuse/tracing'
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
 
 // 是否已初始化
@@ -44,6 +45,7 @@ export function initLangfuse(): LangfuseSpanProcessor | null {
 
     spanProcessor = new LangfuseSpanProcessor({
       shouldExportSpan,
+      environment: process.env.NODE_ENV || 'development',
     })
 
     const tracerProvider = new NodeTracerProvider({
@@ -84,6 +86,8 @@ export function createTelemetryConfig(
 
   return {
     isEnabled: true,
+    recordInputs: false,
+    recordOutputs: false,
     functionId,
     metadata: {
       ...metadata,
@@ -92,31 +96,26 @@ export function createTelemetryConfig(
   }
 }
 
-/**
- * 创建带 trace ID 的 telemetry 配置（用于关联多个调用）
- *
- * @param functionId - 功能标识
- * @param traceId - Langfuse trace ID
- * @param metadata - 额外的元数据
- */
-export function createTelemetryConfigWithTrace(
-  functionId: string,
-  traceId: string,
-  metadata?: Record<string, string | number | boolean | string[]>
-) {
+export async function withLangfuseTrace<T>(
+  name: string,
+  attributes: {
+    input?: unknown
+    metadata?: Record<string, unknown>
+  },
+  callback: (observation: LangfuseSpan | null) => Promise<T>
+): Promise<T> {
   if (!isLangfuseEnabled()) {
-    return { isEnabled: false }
+    return callback(null)
   }
 
-  return {
-    isEnabled: true,
-    functionId,
-    metadata: {
-      ...metadata,
-      langfuseTraceId: traceId,
-      environment: process.env.NODE_ENV || 'development',
+  return startActiveObservation(
+    name,
+    async (observation) => {
+      observation.update(attributes)
+      return callback(observation)
     },
-  }
+    { asType: 'span' }
+  )
 }
 
 /**

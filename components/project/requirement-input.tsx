@@ -13,9 +13,18 @@ import type { Requirement } from '@/types'
 interface RequirementInputProps {
   projectId: string
   requirement?: Requirement | null
+  locked?: boolean
+  embedded?: boolean
+  onSaved?: () => void
 }
 
-export function RequirementInput({ projectId, requirement }: RequirementInputProps) {
+export function RequirementInput({
+  projectId,
+  requirement,
+  locked = false,
+  embedded = false,
+  onSaved,
+}: RequirementInputProps) {
   const router = useRouter()
   const [content, setContent] = useState(requirement?.raw_content || '')
   const [isSaving, startSaveTransition] = useTransition()
@@ -39,21 +48,15 @@ export function RequirementInput({ projectId, requirement }: RequirementInputPro
       } else {
         toast.success('需求已保存')
         router.refresh()
+        onSaved?.()
       }
     })
   }
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>需求文本</CardTitle>
-        <CardDescription>
-          直接输入或粘贴需求文档内容
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <Textarea
-          placeholder="请输入项目需求描述...
+  const contentForm = (
+    <div className="space-y-4">
+      <Textarea
+        placeholder="请输入项目需求描述...
 
 例如：
 - 项目背景和目标
@@ -61,12 +64,13 @@ export function RequirementInput({ projectId, requirement }: RequirementInputPro
 - 技术要求
 - 性能需求
 - 其他特殊要求"
-          rows={12}
-          className="resize-none font-mono text-sm"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          disabled={isSaving}
-        />
+        rows={12}
+        className="resize-none font-mono text-sm"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        disabled={isSaving || locked}
+      />
+      {!locked ? (
         <div className="flex justify-end">
           <Button
             onClick={handleSave}
@@ -77,15 +81,31 @@ export function RequirementInput({ projectId, requirement }: RequirementInputPro
             ) : (
               <Save className="mr-2 h-4 w-4" />
             )}
-            保存需求
+            保存需求草稿
           </Button>
         </div>
-        {requirement && (
-          <p className="text-xs text-muted-foreground">
-            上次保存: {new Date(requirement.created_at).toLocaleString('zh-CN')}
-          </p>
-        )}
-      </CardContent>
+      ) : null}
+      {requirement && (
+        <p className="text-xs text-muted-foreground">
+          草稿创建于: {new Date(requirement.created_at).toLocaleString('zh-CN')}
+        </p>
+      )}
+    </div>
+  )
+
+  if (embedded) return contentForm
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>需求文本</CardTitle>
+        <CardDescription>
+          {locked
+            ? '该文本已纳入正式需求；如需调整，请添加新的需求来源。'
+            : '直接输入或粘贴需求文档内容'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>{contentForm}</CardContent>
     </Card>
   )
 }

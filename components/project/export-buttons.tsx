@@ -18,6 +18,8 @@ interface ExportButtonsProps {
   requirement: Requirement | null
   functions: FunctionModule[]
   costEstimate: CostEstimate | null
+  estimateVersionId: string
+  estimateRevision: number
 }
 
 export function ExportButtons({
@@ -25,13 +27,22 @@ export function ExportButtons({
   requirement,
   functions,
   costEstimate,
+  estimateVersionId,
+  estimateRevision,
 }: ExportButtonsProps) {
   const [isExporting, setIsExporting] = useState(false)
 
   const handleExportPDF = async () => {
     setIsExporting(true)
     try {
-      generatePDFReport({ project, requirement, functions, costEstimate })
+      generatePDFReport({
+        project,
+        requirement,
+        functions,
+        costEstimate,
+        estimateVersionId,
+        estimateRevision,
+      })
       toast.success('PDF 报告已生成')
     } catch (error) {
       console.error('PDF 导出失败:', error)
@@ -44,7 +55,14 @@ export function ExportButtons({
   const handleExportExcel = async () => {
     setIsExporting(true)
     try {
-      generateExcelReport({ project, requirement, functions, costEstimate })
+      generateExcelReport({
+        project,
+        requirement,
+        functions,
+        costEstimate,
+        estimateVersionId,
+        estimateRevision,
+      })
       toast.success('Excel 报告已生成')
     } catch (error) {
       console.error('Excel 导出失败:', error)

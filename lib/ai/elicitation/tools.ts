@@ -9,6 +9,7 @@ import type { ElicitationCollectedInfo, ElicitationQuestion } from '@/types'
 interface ElicitationToolsContext {
   projectId: string
   elicitationSessionId: string
+  requestCompletion?: (input: { summary: string }) => void
 }
 
 /**
@@ -61,7 +62,7 @@ function generateId(): string {
  * 创建 Elicitation 模式的工具集
  */
 export function createElicitationTools(context: ElicitationToolsContext) {
-  const { elicitationSessionId } = context
+  const { elicitationSessionId, requestCompletion } = context
 
   /**
    * 生成结构化问题
@@ -119,6 +120,7 @@ export function createElicitationTools(context: ElicitationToolsContext) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', elicitationSessionId)
+        .eq('status', 'active')
 
       return {
         success: true,
@@ -265,41 +267,12 @@ export function createElicitationTools(context: ElicitationToolsContext) {
         return { success: false, message: '未确认完成' }
       }
 
-      const supabase = await createClient()
-
-      // 获取当前会话
-      const { data: session } = await supabase
-        .from('elicitation_sessions')
-        .select('collected_info, project_id')
-        .eq('id', elicitationSessionId)
-        .single()
-
-      if (!session) {
-        return { success: false, error: '会话不存在' }
-      }
-
-      const collectedInfo = (session.collected_info || {}) as ElicitationCollectedInfo
-
-      // 更新会话状态为已完成
-      const { error: updateError } = await supabase
-        .from('elicitation_sessions')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          completion_summary: summary,
-        })
-        .eq('id', elicitationSessionId)
-
-      if (updateError) {
-        return { success: false, error: updateError.message }
-      }
+      requestCompletion?.({ summary })
 
       return {
         success: true,
-        message: '需求引导已完成，可以进入分析阶段',
+        message: '已申请完成需求引导，将在本轮正常结束后保存',
         summary,
-        collectedInfo,
       }
     },
   })

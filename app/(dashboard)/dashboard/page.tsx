@@ -12,21 +12,6 @@ import {
   ArrowRight,
 } from 'lucide-react'
 
-interface DashboardStats {
-  totalProjects: number
-  monthlyProjects: number
-  totalEstimatedCost: number
-  averageHours: number
-}
-
-interface RecentProject {
-  id: string
-  name: string
-  status: string
-  created_at: string
-  industry: string | null
-}
-
 async function getDashboardData() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -52,15 +37,27 @@ async function getDashboardData() {
     .eq('created_by', user.id)
     .gte('created_at', startOfMonth.toISOString())
 
-  // 获取总成本估算
-  const { data: costData } = await supabase
-    .from('cost_estimates')
-    .select('total_cost, project_id')
+  const { data: ownedProjects } = await supabase
+    .from('projects')
+    .select('id, latest_estimate_version_id')
+    .eq('created_by', user.id)
 
-  // 获取总工时
-  const { data: hoursData } = await supabase
-    .from('function_modules')
-    .select('estimated_hours')
+  const latestVersionIds = (ownedProjects || [])
+    .map((project) => project.latest_estimate_version_id)
+    .filter((id): id is string => Boolean(id))
+
+  const [{ data: costData }, { data: hoursData }] = latestVersionIds.length > 0
+    ? await Promise.all([
+      supabase
+        .from('estimate_version_costs')
+        .select('total_cost, estimate_version_id')
+        .in('estimate_version_id', latestVersionIds),
+      supabase
+        .from('estimate_version_functions')
+        .select('estimated_hours, estimate_version_id')
+        .in('estimate_version_id', latestVersionIds),
+    ])
+    : [{ data: [] }, { data: [] }]
 
   const totalEstimatedCost = costData?.reduce((sum, item) => sum + Number(item.total_cost), 0) || 0
   const totalHours = hoursData?.reduce((sum, item) => sum + Number(item.estimated_hours), 0) || 0
@@ -143,7 +140,7 @@ export default async function DashboardPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">总报价金额</CardTitle>
+            <CardTitle className="text-sm font-medium">总估算成本</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -191,7 +188,7 @@ export default async function DashboardPage() {
             <div className="text-center py-8 text-muted-foreground">
               <FolderKanban className="mx-auto h-12 w-12 mb-4 opacity-50" />
               <p>暂无项目</p>
-              <p className="text-sm">点击"新建项目"开始您的第一个估算</p>
+              <p className="text-sm">点击&quot;新建项目&quot;开始您的第一个估算</p>
             </div>
           ) : (
             <div className="space-y-4">

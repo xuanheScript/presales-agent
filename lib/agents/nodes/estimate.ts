@@ -1,6 +1,13 @@
 import { generateText, Output } from 'ai'
 import { z } from 'zod'
-import { defaultModel } from '@/lib/ai/config'
+import type { RunnableConfig } from '@langchain/core/runnables'
+import { defaultModelGateway, type ModelGateway } from '@/lib/ai/model-gateway'
+import {
+  EXECUTION_POLICY,
+  getRunnableSignal,
+  isAbortError,
+  withAbortSignal,
+} from '../execution-policy'
 import { createTelemetryConfig } from '@/lib/observability/langfuse'
 import type { PresalesState, AgentEffortEstimation } from '../state'
 
@@ -72,7 +79,9 @@ const BUFFER_ESTIMATION_PROMPT = `你是一位经验丰富的项目经理，擅�
  * 2. 评估缓冲系数
  */
 export async function estimateNode(
-  state: PresalesState
+  state: PresalesState,
+  config?: RunnableConfig,
+  modelGateway: ModelGateway = defaultModelGateway
 ): Promise<Partial<PresalesState>> {
   // 验证前置条件
   if (!state.functions || state.functions.length === 0) {
@@ -107,11 +116,21 @@ export async function estimateNode(
       }
     }
 
-    // 2. 加入额外工作项的工时（按角色分配）
+    // 2. 加入额外工作项的工时（按唯一角色平均分配）
     for (const work of state.additionalWork) {
-      // 额外工作项的工时平均分配给 assignedRoles
-      const daysPerRole = work.days / work.assignedRoles.length
-      for (const role of work.assignedRoles) {
+      const assignedRoles = Array.from(new Set(work.assignedRoles))
+      if (assignedRoles.length === 0) {
+        throw new Error(`${work.workItem}必须至少分配一个角色`)
+      }
+      if (!Number.isFinite(work.days) || work.days <= 0) {
+        throw new Error(`${work.workItem}的人天必须是有限的正数`)
+      }
+
+      const daysPerRole = work.days / assignedRoles.length
+      for (const role of assignedRoles) {
+        if (!state.identifiedRoles.some((item) => item.role === role)) {
+          throw new Error(`${work.workItem}引用了不存在的角色: ${role}`)
+        }
         const current = roleDaysMap.get(role) || 0
         roleDaysMap.set(role, current + daysPerRole)
       }
@@ -147,19 +166,27 @@ export async function estimateNode(
       .replace('{baseTotalDays}', String(Math.round(baseTotalDays * 10) / 10))
 
     // 6. 调用 AI 模型评估缓冲系数
-    const { output } = await generateText({
-      model: defaultModel,
-      output: Output.object({
-        schema: bufferEstimationSchema,
-      }),
-      prompt,
-      experimental_telemetry: createTelemetryConfig('workflow-estimate', {
-        projectId: state.projectId,
-        requirementId: state.requirementId,
-        modulesCount: state.functions.length,
-        baseTotalDays,
-      }),
-    })
+    const { output } = await withAbortSignal(
+      [getRunnableSignal(config)],
+      EXECUTION_POLICY.workflowNodeTimeoutMs,
+      (signal) => generateText({
+        model: modelGateway.model,
+        output: Output.object({
+          schema: bufferEstimationSchema,
+        }),
+        prompt,
+        abortSignal: signal,
+        maxRetries: modelGateway.maxRetries,
+        providerOptions: modelGateway.profile.providerOptions,
+        experimental_telemetry: createTelemetryConfig('workflow-estimate', {
+          projectId: state.projectId,
+          requirementBaselineId: state.requirementBaselineId,
+          executionId: String(config?.configurable?.executionId || 'none'),
+          modulesCount: state.functions.length,
+          baseTotalDays,
+        }),
+      })
+    )
 
     // 验证输出
     if (!output) {
@@ -202,6 +229,10 @@ export async function estimateNode(
       error: null,
     }
   } catch (error) {
+    if (isAbortError(error, getRunnableSignal(config))) {
+      throw error
+    }
+
     console.error('[Agent] 工时评估失败:', error)
 
     return {
